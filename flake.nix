@@ -1,0 +1,95 @@
+{
+  description = ''
+  This flake represents the core parts of QixOS.
+  '';
+
+  inputs = {
+    nixpkgs.url = "nixpkgs/nixos-unstable";
+  };
+
+  outputs = { self, nixpkgs, ... }:
+  let
+    system = "x86_64-linux";
+    pkgs = import nixpkgs {
+      inherit system;
+    };
+  in {
+    lib = {
+      mkNubeClusterWith = import ./core/qixos-nix-libs/make-nube-cluster.nix { qixosCore = self; };
+      mkNubeTemplate = import ./core/qixos-nix-libs/make-nube-template.nix { qixosCore = self; };
+      mkNubeApp = import ./core/qixos-nix-libs/make-nube-app.nix { qixosCore = self; };
+      mkNubeStandalone = import ./core/qixos-nix-libs/make-nube-template.nix { qixosCore = self; };
+    };
+
+    packages.x86_64-linux = let
+      corePkgs = import nixpkgs {
+        inherit system;
+        overlays = [ self.overlays.base ];
+      };
+      adminPkgs = import nixpkgs {
+        inherit system;
+        overlays = [ self.overlays.admin ];
+      };
+    in
+    {
+      inherit (corePkgs)
+        qubes-gui-common
+        qubes-core-vchan-xen
+        qubes-core-qubesdb
+        qubes-core-qrexec
+        qubes-linux-utils
+        qubes-core-agent-linux
+        qubes-gui-agent-linux
+        qixos-switch
+        qubes-usb-proxy;
+
+      inherit (adminPkgs)
+        qixos-rebuild
+        qubes-core-admin-client
+        # This is kind of a hack to get the qubes admin `clone_vm` not error on qvm-appmenus missing
+        qvm-appmenus-stub;
+    };
+
+    nixosModules.qubesModules = {...}: {
+      imports = [
+        ./core/qubes-modules/core.nix
+        ./core/qubes-modules/db.nix
+        ./core/qubes-modules/gui.nix
+        ./core/qubes-modules/networking.nix
+        ./core/qubes-modules/qrexec.nix
+        ./core/qubes-modules/updates.nix
+        ./core/qubes-modules/usb.nix
+      ];
+    };
+
+    nixosProfiles.basicQube = { ... }: {
+      imports = [
+        ./core/qubes-modules/basic-qube-profile.nix
+      ];
+    };
+
+    # Base overlay should be included in all nubes
+    overlays.base = final: prev: {
+      qubes-core-vchan-xen = final.callPackage ./core/qubes-pkgs/qubes-core-vchan-xen {};
+      qubes-core-qubesdb = final.callPackage ./core/qubes-pkgs/qubes-core-qubesdb {};
+      qubes-core-agent-linux = final.callPackage ./core/qubes-pkgs/qubes-core-agent-linux {};
+      qubes-core-qrexec = final.callPackage ./core/qubes-pkgs/qubes-core-qrexec {};
+      qubes-gui-agent-linux = final.callPackage ./core/qubes-pkgs/qubes-gui-agent-linux {};
+      qubes-gui-common = final.callPackage ./core/qubes-pkgs/qubes-gui-common {};
+      qubes-linux-utils = final.callPackage ./core/qubes-pkgs/qubes-linux-utils {};
+      qubes-usb-proxy = final.callPackage ./core/qubes-pkgs/qubes-usb-proxy {};
+      qixos-switch = (final.callPackage ./core/qixos-rebuild {}).qixosSwitch;
+    };
+
+    overlays.admin = nixpkgs.lib.composeManyExtensions [
+      self.overlays.base
+      (final: prev: {
+        qubes-core-admin-client = final.callPackage ./core/qubes-pkgs/qubes-core-admin-client {};
+        qixos-rebuild = (final.callPackage ./core/qixos-rebuild {}).qixosRebuild;
+        qvm-appmenus-stub = pkgs.writeShellScriptBin "qvm-appmenus" ''
+          exit 0
+        '';
+      })
+    ];
+  };
+}

@@ -1,0 +1,21 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "qixos-rebuild"
+version = "0.1.0"
+description = "qixos-rebuild is the admin nubes interface for putting the entire qixos system into a configured state."
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = ["pydantic"]
+
+[project.optional-dependencies]
+admin = ["qubesadmin"]
+
+[project.scripts]
+qixos-rebuild = "qixos_rebuild.cli:main"
+qixos-switch = "qixos_rebuild.qrexec.qixos_switch:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/qixos_rebuild"]
