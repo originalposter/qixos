@@ -39,6 +39,14 @@ CURRENT_FLAKE_COPIED_DIR = Path(f"{CURRENT_FLAKE_DIR}/local-repos")
 
 INPUT_TEMPLATE_FLAKE_NAME = "template"
 
+# Inputs that every AppVM is forced to share with its template. An AppVM's closure is
+# evaluated and built by its template and read out of the template's /nix/store, so the two
+# differing on either of these is incoherent. Different clusters may still pin different
+# versions - the template flake is where that choice lives.
+# These names are a convention. Nix only warns if an AppVM names its inputs something else,
+# in which case that AppVM keeps its own pin.
+INPUT_FOLLOWED_FROM_TEMPLATE = ["nixpkgs", "qixCore"]
+
 
 def log(m):
     print(m, file=sys.stderr)
@@ -160,6 +168,17 @@ def local_path_to_local_flake_url(local_path: str, tar_dir: Path) -> str:
     return f"git+file://{tar_dir}?dir={local_path}"
 
 
+def follows_from_template(appvm_name: str) -> list[str]:
+    """Input override lines pinning an AppVM to the template's shared inputs.
+
+    See INPUT_FOLLOWED_FROM_TEMPLATE for why these are forced.
+    """
+    return [
+        f"{appvm_name}.inputs.{input_name}.follows = \"{INPUT_TEMPLATE_FLAKE_NAME}/{input_name}\";"
+        for input_name in INPUT_FOLLOWED_FROM_TEMPLATE
+    ]
+
+
 def generate_flake(protocol: ProtocolJson):
     input_strings = []
     output_appvm_strings = []
@@ -168,13 +187,13 @@ def generate_flake(protocol: ProtocolJson):
         appvm_name = f"\"appvm-{name}\""
         flake_url = local_path_to_local_flake_url(local_appvm_data.flake.source, CURRENT_FLAKE_COPIED_DIR / local_appvm_data.dir_name)
         input_strings.append(f"{appvm_name}.url = \"{flake_url}\";")
-        input_strings.append(f"{appvm_name}.inputs.nixpkgs.follows = \"{INPUT_TEMPLATE_FLAKE_NAME}/nixpkgs\";")
+        input_strings.extend(follows_from_template(appvm_name))
         output_appvm_strings.append(f"{name} = inputs.{appvm_name}." + f"{local_appvm_data.flake.output}.config;")
 
     for name, flake in protocol.remote_appvms.items():
         appvm_name = f"\"appvm-{name}\""
         input_strings.append(f"{appvm_name}.url = \"{flake.source}\";")
-        input_strings.append(f"{appvm_name}.inputs.nixpkgs.follows = \"{INPUT_TEMPLATE_FLAKE_NAME}/nixpkgs\";")
+        input_strings.extend(follows_from_template(appvm_name))
         output_appvm_strings.append(f"{name} = inputs.{appvm_name}." + f"{flake.output}.config;")
 
     if protocol.template_dirname is not None:

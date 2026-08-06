@@ -83,7 +83,7 @@ This will start the TemplateVMs and `nixos-rebuild` them with the new configurat
 
 
 ## Updating 
-In order to update a nube you need to update that nubes `flake.lock`. If you're updating `nixpkgs` then make sure to update the `flake.lock` of the template since all AppVMs use the `nixpkgs` of the template.
+In order to update a nube you need to update that nubes `flake.lock`. If you're updating `nixpkgs` or `qixCore` then update the `flake.lock` of the template, since all AppVMs in a cluster are forced onto the template's version of both. Inner configurations must name these two inputs `nixpkgs` and `qixCore` for that to take effect; an AppVM that names them something else keeps its own pin and Nix only warns about it.
 If you don't have write access to the repo containing the `flake.lock` then you can switch to using a local version of the nube config.
 Once the `flake.lock` has been updated you pass the `--update` flag to `qixos-rebuild` for either `apply` or `switch`.
 This will update the generated `/var/qixos/current-flake/flake.lock` to point at your updated flake.
