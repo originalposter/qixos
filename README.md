@@ -3,7 +3,7 @@ Qubes with Nix - the security and compartmentalization of QubesOS plus the confi
 
 QixOS is a combination of QubesOS and NixOS. It is installed inside of QubesOS as an extension and provides tooling for managing your system with nix configurations.
 QixOS makes some opinionated architectural decisions which are meant to increase security and improve ergonomics.
-There is a [sister community repository](https://codeberg.org/originalposter/qixos-community) where users can share their nube (nix qube) configurations.
+There is a [sister community repository](https://github.com/originalposter/qixos-community) where users can share their nube (nix qube) configurations.
 
 *Status: Public alpha. Expect that things are buggy and unstable. Don't use for security critical tasks*
 
@@ -41,7 +41,7 @@ Especially with a focus on the security of the project. Hopefully this can give 
 - Templates are dependent on the NixOS configuration of all AppVMs that depend on them. Templates and all AppVMs can see the entire `/nix/store` and nix config of all other dependent AppVMs. As long as you don't store secrets in `/nix/store` or are using security by obscurity it should not be a problem.
 
 # Community
-- https://codeberg.org/originalposter/qixos-community - community repository where you may upload your own configurations and download others configs
+- https://github.com/originalposter/qixos-community - community repository where you may upload your own configurations and download others configs
 - https://discord.gg/HKS9GDena - discord server where you can bring your questions in order to get fast feedback
 - https://forum.qubes-os.org - QubesOS forum for finding other Qubes enthusiasts and discussing Qubes
 
