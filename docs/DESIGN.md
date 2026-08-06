@@ -162,7 +162,7 @@ The decision for what nixpkgs version to use can be done in 3 places:
 1) seems like the best place to put this since it allows all AppVMs to use the same version and therefore reduces redundancy but also allows users to control which version of nixpkgs that they use by locking it in the templates config.
 
 ## Design decision 7
-The `mkNubeApp` function can take a `directBuild` parameter which accepts a nixpkgs version and (for now) a home-manager version.
+The `mkNubeApp` function can take a `directBuild` parameter which accepts a nixpkgs version.
 This let's the returned value from `mkNubeApp` have a `nixosConfigurations.default` field.
 This field exposes a regular NixOS configuration which can be used to switch directly to that AppVM config.
 Note that this config will use its own nixpkgs version rather than that of its template VM which is different from the normal case where it uses its templates nixpkgs version.
@@ -192,13 +192,13 @@ Updating a nube happens in 2 steps.
 QixOS is installed as an extension ontop of a regular QubesOS system.
 You may use QixOS in parallel to QubesOS.
 
-## Design decision 12 (future)
-Home manager is currently privileged in the inner configuration of a nube. There is a `rootConfiguration` key as well as a `homeConfiguration` key.
-The internals of the qixos nix libraries will make the home manager configuration be evaluated by a standalone `home-manager` tool rather than as a nixos home manager module.
-This is not ideal, we would like to change this so that home-manager is no longer privileged.
-The reasons we want this is because it would reduce code complexity as well as it being an unprincipled and unnecessary decision.
-Home manager is not a must-use for nixos users, some prefer to not use it. It also is perfectly possible to use it as a nixos module rather than as standalone. We would just encourage qixos users to use it that way.
+## Design decision 12
+Home manager is not privileged in the inner configuration of a nube. A nube's inner configuration is a single list of `modules` which is evaluated as a plain `nixosSystem`.
+Users who want home manager import it as a nixos module like any other nixos user, and users who don't want it never have to mention it.
 
+QixOS used to have a `rootConfiguration` key alongside a `homeConfiguration` key, where the home configuration was evaluated by the standalone `home-manager` tool rather than as a nixos module.
+That produced a second activation package per AppVM, a second symlink in the template's activation directory, and a second systemd job to run it.
+It was removed because home manager is not a must-use for nixos users, and because using it as a nixos module works perfectly well.
 The reason it was originally built with home manager as a privileged concept was a misguided attempt at making AppVM switching easier.
 
 # Known issues

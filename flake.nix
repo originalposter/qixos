@@ -52,6 +52,7 @@
 
     nixosModules.qubesModules = {...}: {
       imports = [
+        ./core/qubes-modules/appmenus.nix
         ./core/qubes-modules/core.nix
         ./core/qubes-modules/db.nix
         ./core/qubes-modules/gui.nix

@@ -55,19 +55,29 @@
 # which causes the VM to not be reachable by any GUI application. For this reason care should be taken to not restart
 # systemd once the GUI daemon has started.
 #
-# NOTE Serpent V: The user systemd jobs defined by `systemd.user.services` do not get started by `switch-to-configuration`
-# ran by the pid=1 systemd job. For that reason we run 2 jobs, one running under the user account and the other under the system
-# account. The user account one is responsible for running the home manager switch as well as making sure the users `default.target`
-# systemd jobs get started, this is necessary because new ones may have been created on the system switch.
-# It is important that the user job runs after the system job. No clean ordering way is provided by systemd but
-# it should be implicitly enforced since our system job runs `before = [ "user@1000.service" ]`.
+# NOTE Serpent V: `switch-to-configuration` does reload the user systemd manager, but only
+# partially. It re-execs it (so new unit files under /etc/systemd/user are read) and restarts
+# `nixos-activation.service`, but a re-exec does not pull in newly wanted units. Any
+# `systemd.user.services` that exists in the AppVM configuration but not in the template's would
+# therefore sit dormant until the next boot.
+# Starting the user's `default.target` fixes that: systemd re-evaluates the target's `Wants=` and
+# pulls in anything newly present that isn't running. This is the same trick
+# `switch-to-configuration` relies on for system targets, described in the note on the system
+# service below, applied one level down in the user manager.
+# We do it inline at the tail of this job rather than from a second job running in the user
+# manager, because ordering between a system job and a user job cannot be expressed in systemd -
+# `before = [ "user@1000.service" ]` says nothing once that unit is already running, and the user
+# manager reaches its own `default.target` long before the system reaches ours. Sequential lines in
+# one script are actually ordered.
+# Reaching the user manager from root needs nothing but XDG_RUNTIME_DIR, which is how
+# `switch-to-configuration` and home-manager both do it. If no session is open yet the call simply
+# fails and is ignored - `default.target` will then start normally when the session does open, and
+# pick everything up anyway.
 { appVmNames, activationDir, runQixosDir }: { pkgs, ... }:
 let
   nixosActivationCall = name: "${activationDir}/${name}/nixos/bin/switch-to-configuration test";
-  hmActivationCall = name: "${activationDir}/${name}/hm/activate";
   alreadyActivatedPath = "${runQixosDir}/already-activated";
 
-  # Activation script for the system systemd job
   activationScript = pkgs.writeShellScript "qixos-appvm-switch" ''
     set -euo pipefail
     # Make sure we have not already run this
@@ -75,35 +85,28 @@ let
     mkdir -p ${runQixosDir}
     touch ${alreadyActivatedPath}
 
+    # Starts the user's default.target so that user units which the AppVM configuration adds
+    # on top of the template's get picked up. See NOTE Serpent V.
+    # `--init-groups` is what su(1) and runuser(1) do; setpriv refuses to change the gid
+    # without being told how to handle supplementary groups, and keeping root's would leak
+    # them into the user's process.
+    start_user_default_target() {
+      local user uid gid
+      user=$(${pkgs.qubes-core-qubesdb}/bin/qubesdb-read /default-user || echo user)
+      uid=$(${pkgs.coreutils}/bin/id -u "$user")
+      gid=$(${pkgs.coreutils}/bin/id -g "$user")
+      ${pkgs.util-linux}/bin/setpriv --reuid="$uid" --regid="$gid" --init-groups \
+        env XDG_RUNTIME_DIR="/run/user/$uid" \
+        ${pkgs.systemd}/bin/systemctl --user start default.target || true
+    }
+
     QUBE_NAME=$(${pkgs.qubes-core-qubesdb}/bin/qubesdb-read /name)
     case "$QUBE_NAME" in
       ${builtins.concatStringsSep "\n      " (
           map (name: ''
             ${name})
-              # This errors without failing due to the user service not being available yet.
-              # We try to cover what it does in the system job 2
               ${nixosActivationCall name}
-              ;;
-          '') appVmNames
-      )}
-      *) echo "No qixos config for qube: $QUBE_NAME"; exit 1 ;;
-    esac
-  '';
-
-  # Activation script for user systemd job
-  userActivationScript = pkgs.writeShellScript "qixos-appvm-switch-user" ''
-    set -euo pipefail
-
-    QUBE_NAME=$(${pkgs.qubes-core-qubesdb}/bin/qubesdb-read /name)
-    case "$QUBE_NAME" in
-      ${builtins.concatStringsSep "\n      " (
-          map (name: ''
-            ${name})
-              # Tries to do what the switch-to-configuration job does for user
-              # systemd jobs because it can't be done in the service job.
-              ${pkgs.systemd}/bin/systemctl --user start nixos-activation.service || true
-              ${hmActivationCall name}
-              ${pkgs.systemd}/bin/systemctl --user start default.target
+              start_user_default_target
               ;;
           '') appVmNames
       )}
@@ -112,29 +115,6 @@ let
   '';
 in
 {
-  # User service
-  systemd.user.services.qixos-appvm-user-switch = {
-    description = "qixos appvm user-side activation";
-    wantedBy = [ "default.target" ];  # user's default.target
-    after = [ "default.target" ];     # user's default.target
-    serviceConfig = {
-      Type = "oneshot";
-      RemainAfterExit = true;
-      ExecStart = userActivationScript;
-    };
-
-    path = with pkgs; [ nix ];
-
-    environment = {
-      HOME = "/home/user";
-      NIX_PATH = "nixpkgs=${pkgs.path}";
-    };
-
-    # We could use `this-is-templatevm` but then this would run for standalone, which we don't want.
-    unitConfig.ConditionPathExists = "!/run/qubes/persistent-full";
-  };
-
-  # System service
   systemd.services.qixos-appvm-switch = {
     description = "switch to the App VM nix configuration on the system level";
 
@@ -152,8 +132,10 @@ in
     # target that activates after default.target and have units wantedBy 
     # it, we'll need to revisit this.
     #
-    # Run before user@1000.service in an effort to make sure the system job
-    # runs before the user job
+    # Run before user@1000.service so that the switch has preferably happened before the
+    # user session starts. This is only a preference: the session is usually already up by
+    # the time we run, which is exactly why the user side of the switch is done inline at
+    # the end of the activation script rather than from a second unit. See NOTE Serpent V.
     after = [ "qubes-db.service" "default.target" ];
     before = [ "user@1000.service" ];
     requires = [ "qubes-db.service" ];

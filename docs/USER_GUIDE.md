@@ -9,6 +9,34 @@ Since normal nixos configurations are also divided up into modules we are able t
 The outer configuration is in a QixOS specific format and is consumed by the Qix tool `qixos-rebuild`.
 
 
+## Configuring your home directory
+QixOS has no opinion about your home directory and no separate place to configure it.
+If you want [home-manager](https://github.com/nix-community/home-manager) you import it as a nixos module in your inner configuration, exactly as you would on any other nixos machine:
+
+```nix
+{
+  inputs.home-manager.url = "github:nix-community/home-manager";
+
+  outputs = { nixpkgs, home-manager, qixos, ... }: {
+    myAppVm = qixos.lib.mkNubeApp {
+      modules = [
+        home-manager.nixosModules.home-manager
+        {
+          home-manager.users.user = {
+            home.stateVersion = "24.05";
+            programs.git.enable = true;
+          };
+        }
+      ];
+    };
+  };
+}
+```
+
+`home.stateVersion` is yours to set - home-manager requires it and will fail to evaluate without it.
+`home.username` and `home.homeDirectory` do not need setting; home-manager's nixos module derives them from the nixos user.
+
+
 # `qixos-rebuild` tool
 In order to apply the configuration files to your system you use `qixos-rebuild --flake <outer-conf.nix>`.
 It takes 3 commands, `apply`, `switch`, `diff`. `apply` first applies all the outer configuration changes such as creating and deleting VMs and changing their properties. It then switches each template VMs inner configuration by running `nixos-rebuild switch` inside the nube.
