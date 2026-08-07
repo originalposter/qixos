@@ -95,9 +95,17 @@ let
       user=$(${pkgs.qubes-core-qubesdb}/bin/qubesdb-read /default-user || echo user)
       uid=$(${pkgs.coreutils}/bin/id -u "$user")
       gid=$(${pkgs.coreutils}/bin/id -g "$user")
+      # We run before user@.service, so usually there is no user manager yet and the session
+      # will reach default.target by itself. One is only already up if the switch landed after
+      # login - a late or slow switch, or this unit restarted by hand.
+      if [ ! -S "/run/user/$uid/bus" ]; then
+        echo "no user session for $user yet; its default.target will start at login"
+        return 0
+      fi
       ${pkgs.util-linux}/bin/setpriv --reuid="$uid" --regid="$gid" --init-groups \
         env XDG_RUNTIME_DIR="/run/user/$uid" \
-        ${pkgs.systemd}/bin/systemctl --user start default.target || true
+        ${pkgs.systemd}/bin/systemctl --user start default.target \
+        || echo "WARNING: could not start user default.target for $user"
     }
 
     QUBE_NAME=$(${pkgs.qubes-core-qubesdb}/bin/qubesdb-read /name)
