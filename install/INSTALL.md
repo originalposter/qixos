@@ -208,13 +208,16 @@ qvm-clone nixos qixos-admin-base-template
 ### Step 8
 Make sure `qixos-admin-base-template` is shut down and then resize the disk of the root filesystem to hold at least 30 GB
 ```
-qvm-volume resize qixos-admin-base-template:root $((30 * 1024 * 1024* 1024))
+qvm-volume resize qixos-admin-base-template:root 30GiB
 ```
 
 ### Step 9
 Do a first `nixos-rebuild boot` of `qixos-admin-base-template` to initialize the system.
+Take a root shell rather than prefixing with `sudo`, since nix commands under `sudo` run
+into trouble (see `install/build-nix-template/README.md`).
 ```
-sudo nixos-rebuild boot --flake /etc/nixos#nixos
+sudo su
+nixos-rebuild boot --flake /etc/nixos#nixos
 ```
 Then shut down the template.
 
