@@ -133,32 +133,36 @@ def main():
     args = parser.parse_args()
 
     app = qubesadmin.Qubes()
+
     try:
         args.func(args, app)
     except NixError as e:
-        print("failed to evaluate nix expression", e)
+        print("failed to evaluate nix expression", e, file=sys.stderr)
     except QubesError as e:
-        print("lacking qubes permissions", e)
+        print("lacking qubes permissions", e, file=sys.stderr)
     except RenameError as e:
-        print(e)
+        print(e, file=sys.stderr)
     except NoBaseTemplateError as e:
-        print(e)
+        print(e, file=sys.stderr)
     except NoNetVmError as e:
-        print(e)
+        print(e, file=sys.stderr)
     except DuplicateVmName as e:
-        print(e)
+        print(e, file=sys.stderr)
     except ConfigError as e:
-        print(e)
+        print(e, file=sys.stderr)
     except LocalFlakeError as e:
-        print(e)
+        print(e, file=sys.stderr)
     except ValidationError as e:
         # TODO: THIS SHOULD BE MADE WAY MORE READABLE
-        print(f"Invalid qixos configuration:\n{e}")
+        print(f"Invalid qixos configuration:\n{e}", file=sys.stderr)
     except QixosSwitchError as e:
-        print(e)
+        print(e, file=sys.stderr)
     except OomKillerError as e:
-        print(e)
+        print(e, file=sys.stderr)
+    else:
+        return 0
+    return 1
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
