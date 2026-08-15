@@ -1,7 +1,7 @@
-{ qixosCore }: { nixpkgs, home-manager }: input:
+{ qixosCore }: { nixpkgs }: input:
 let
-  # The template config injects its own preferred nixpkgs and home-manager
-  mkNubeCluster = import ./make-nube-cluster.nix { inherit qixosCore; } { inherit nixpkgs home-manager; };
+  # The template config injects its own preferred nixpkgs
+  mkNubeCluster = import ./make-nube-cluster.nix { inherit qixosCore; } { inherit nixpkgs; };
   # Get core modules needed for a qixos VM to function.
   # This does not include the module machinery used to switch to AppVMs.
   qixCoreModules = import ./construct-qix-core-modules.nix { inherit qixosCore; };

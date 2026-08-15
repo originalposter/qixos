@@ -8,6 +8,7 @@
   services.qubes.gui.enable = true;
   services.qubes.networking.enable = true;
   services.qubes.usb.enable = true;
+  services.qubes.appmenus.enable = true;
 
   fonts.enableDefaultPackages = true;
 

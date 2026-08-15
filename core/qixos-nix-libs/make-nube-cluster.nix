@@ -2,11 +2,10 @@
 #
 # One of the primary entrypoints in QixOS for when making clusters of nix based qubes (nubes).
 # A cluster is made up of 1 template and a set of appvms that are based on that template.
-# The appVMs share the templates configuration but they overlay their own configurations (of both root and home dirs)
-# ontop of the templates.
-# This allows for nice sharing of the /nix/store between appVMs while allowing each appVM to completely configure their own
-# system.
-# It also allows the template to configure basic things that the user wants all appVMs to share.
+# Each appVM defines its own complete configuration; what it shares with the template is the
+# /nix/store, not the configuration itself. The template builds every dependent appVM's
+# configuration into that shared store, which is what lets an appVM boot the template's root
+# volume and then switch to its own configuration without building anything at runtime.
 #
 # Note that in this model all of the /nix/store is shared, meaning that every AppVM can see every other AppVMs
 # configuration. This does *not* mean that they can see each others home directories or live updates.
@@ -40,11 +39,12 @@
 # Desiderata:
 # 1. We want all templates to have some core qix related modules on it.
 # 2. We want the template to contain the user specified root system modules.
-# 3. We want the AppVM to contain the user specified root system modules. This lets them activate HM from nixos.
+# 3. We want the AppVM to contain the user specified system modules. Anything a user wants in their
+# home directory is configured through these too, by importing home-manager as a nixos module.
 # 4. We want the template and ideally the AppVM to have a oneshot systemd job that runs on startup and switches to the correct
 # AppVM derivation.
 
-{ qixosCore }: { nixpkgs, home-manager, ... }: { template, apps, ... }:
+{ qixosCore }: { nixpkgs, ... }: { template, apps, ... }:
 let
 
   runQixosDir = "/run/qixos";
@@ -66,25 +66,14 @@ let
 
   coreModules = [ systemdBootstrapActivationModule ] ++ basicQixCoreModules;
 
-  homeManagerQixosModules = import ./construct-qix-home-modules.nix;
-
-  # Attrs mapping AppVM name to the total derivation that should be activated for that AppVM
-  # This contains all of the template modules and core modules needed too.
+  # Attrs mapping AppVM name to the configuration that should be activated for that AppVM
+  # This contains all of the core modules needed too.
   appVmDerivations = builtins.mapAttrs
     (appVmName: appVmConfig:
-      {
-        root = nixpkgs.lib.nixosSystem {
-            system = "x86_64-linux";
-            modules = coreModules
-              ++ (appVmConfig.rootConfiguration.modules or []);
-            specialArgs = appVmConfig.rootConfiguration.specialArgs or {};
-          };
-        home = home-manager.lib.homeManagerConfiguration {
-            pkgs = nixpkgs.legacyPackages.x86_64-linux;
-            modules = homeManagerQixosModules
-              ++ (appVmConfig.homeConfiguration.modules or []);
-            extraSpecialArgs = appVmConfig.homeConfiguration.extraSpecialArgs or {};
-          };
+      nixpkgs.lib.nixosSystem {
+        system = "x86_64-linux";
+        modules = coreModules ++ (appVmConfig.modules or []);
+        specialArgs = appVmConfig.specialArgs or {};
       }
     )
     apps;
@@ -114,15 +103,5 @@ in
         specialArgs = template.specialArgs or {};
       };
     }
-    // nixpkgs.lib.concatMapAttrs
-        (appvmName: derivations: {
-          "${appvmName}" = derivations.root;
-        })
-        appVmDerivations;
-
-  homeConfigurations = nixpkgs.lib.concatMapAttrs
-    (appvmName: derivations: {
-      "${appvmName}" = derivations.home;
-    })
-    appVmDerivations;
+    // appVmDerivations;
 }
