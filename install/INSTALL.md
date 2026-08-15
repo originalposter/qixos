@@ -79,7 +79,7 @@ In `temporary-qixos-nix-build` install nix, source it and then build the image f
 ```
 sh <(curl --proto '=https' --tlsv1.2 -L https://nixos.org/nix/install) --no-daemon
 . /home/user/.nix-profile/etc/profile.d/nix.sh
-nix --extra-experimental-features "nix-command flakes" --option system-features 'kvm benchmark big-parallel nixos-test' build --no-write-lock-file 'git+https://codeberg.org/originalposter/qixos?ref=master&dir=install/build-nix-template'#rpm
+nix --extra-experimental-features "nix-command flakes" --option system-features 'kvm benchmark big-parallel nixos-test' build --no-write-lock-file 'git+https://github.com/originalposter/qixos?ref=master&dir=install/build-nix-template'#rpm
 ```
 
 ### Step 3
@@ -224,7 +224,7 @@ You can use your own configuration for a qixos template or you can use mine (op 
 I'll illustrate with my own.
 Inside `qixos-admin-base-template`:
 ```
-sudo nixos-rebuild boot --flake "git+https://codeberg.org/originalposter/qixos-community?ref=master&dir=users/op/nubes/templates/basic"#default
+sudo nixos-rebuild boot --flake "git+https://github.com/originalposter/qixos-community?ref=master&dir=users/op/nubes/templates/basic"#default
 ```
 
 Then shutdown the template
@@ -327,7 +327,7 @@ Once you are done you should have 3 new qubes: `qixos-admin`, `qixos-admin-base-
 To get started you can clone the community repository and setup an example repo
 Inside qixos-admin:
 ```
-git clone https://codeberg.org/originalposter/qixos-community
+git clone https://github.com/originalposter/qixos-community
 cd qixos-community
 qixos-rebuild --flake ./users/op/outer-configs/example#example apply 
 ```

@@ -5,7 +5,7 @@
     nixpkgs.url = "nixpkgs/nixos-unstable";
 
     qubes-nixos-template = {
-      url = "git+https://codeberg.org/originalposter/qixos";
+      url = "git+https://github.com/originalposter/qixos";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };

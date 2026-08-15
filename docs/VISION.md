@@ -73,8 +73,6 @@ Other users can download and use this nube without fear that it'll compromise th
 People can wrap software they want to publish in a nube configuration and this can be found and used securely by other users.
 The nube gets to configure an entire environment tailored to that software, which is something a traditional package manager can't offer.
 
-Currently the qixos-community repo is on codeberg but I may consider moving to github if there is enough reason to do so.
-
 One of the downsides of the qixos-community git repo is that it creates a bottleneck for updating configs since you need to go through a PR process.
 It is my intention to let people have their own name-space'd directory and for them to essentially have free control over anything under that directory.
 I would basically rubber-stamp PRs that only touch things under your namespace unless they contain obvious malware.
