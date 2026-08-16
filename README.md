@@ -56,7 +56,7 @@ The way to contribute will evolve as this project grows. Currently the most desi
 Please get in touch and tell me what you think both about the vision and purpose of the project as well as the architectural decisions made in the project.
 Code contributions are also welcome but be warned that I'll push back on feature creep.
 
-# License and acknowledgement
+# License
 Copyright (C) 2026 op (op@qixos.org)
 
 QixOS is licensed under GPL-2.0-or-later.
@@ -66,10 +66,21 @@ of the GNU General Public License as published by the Free Software Foundation,
 either version 2 of the License, or (at your option) any later version.
 See [LICENSE](LICENSE) for the full text.
 
-Parts of `install/build-nix-template/` were originally taken from evq's nixos
-template repository and remain under the MIT license. See
-[install/build-nix-template/LICENSE](install/build-nix-template/LICENSE) and the
-notices in `install/build-nix-template/tools/iso.nix`.
+## Acknowledgement
+Parts of QixOS derive from [evq's qubes-nixos-template](https://github.com/evq/qubes-nixos-template),
+Copyright (c) 2024 eV Quirk, originally published under the MIT license:
+
+- `install/build-nix-template/` - carries its own
+  [LICENSE](install/build-nix-template/LICENSE), plus further notices in
+  `install/build-nix-template/tools/iso.nix` for code from misuzu and the
+  Nixpkgs/NixOS contributors.
+- `core/qubes-modules/` and `core/qubes-pkgs/` - each derived file carries an
+  attribution header naming its origin.
+
+MIT permits redistribution under the GPL, so these portions ship as part of QixOS
+under GPL-2.0-or-later. The original MIT permission notice is retained at
+[install/build-nix-template/LICENSE](install/build-nix-template/LICENSE) and applies
+to all evq-derived code in this repository.
 
 # OP's pgp fingerprint
 Full key can be found under `testaments/pubkeys/op.asc`

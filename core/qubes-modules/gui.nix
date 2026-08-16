@@ -1,3 +1,6 @@
+# Copyright (c) 2024 eV Quirk
+# Taken unmodified from https://github.com/evq/qubes-nixos-template (MIT)
+# SPDX-License-Identifier: GPL-2.0-or-later
 {
   config,
   lib,
