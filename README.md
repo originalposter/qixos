@@ -57,8 +57,19 @@ Please get in touch and tell me what you think both about the vision and purpose
 Code contributions are also welcome but be warned that I'll push back on feature creep.
 
 # License and acknowledgement
-We use the GPL license.
-There is code in this repository that was originally taken from evq's nixos template repository, that was published under MIT.
+Copyright (C) 2026 op (op@qixos.org)
+
+QixOS is licensed under GPL-2.0-or-later.
+
+QixOS is free software: you can redistribute it and/or modify it under the terms
+of the GNU General Public License as published by the Free Software Foundation,
+either version 2 of the License, or (at your option) any later version.
+See [LICENSE](LICENSE) for the full text.
+
+Parts of `install/build-nix-template/` were originally taken from evq's nixos
+template repository and remain under the MIT license. See
+[install/build-nix-template/LICENSE](install/build-nix-template/LICENSE) and the
+notices in `install/build-nix-template/tools/iso.nix`.
 
 # OP's pgp fingerprint
 Full key can be found under `testaments/pubkeys/op.asc`
