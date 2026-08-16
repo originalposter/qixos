@@ -56,6 +56,21 @@ The way to contribute will evolve as this project grows. Currently the most desi
 Please get in touch and tell me what you think both about the vision and purpose of the project as well as the architectural decisions made in the project.
 Code contributions are also welcome but be warned that I'll push back on feature creep.
 
+# Use of LLMs
+QixOS 0.2.0 and after is written together with LLM coding assistants such as Claude Code.
+
+Changes are made together with an LLM, not by an LLM, and every code change is understood before it is merged.
+The one exception to this is documentation which is not security critical. It is still read but not as carefully.
+No LLM agent has push access to this repository.
+
+This matters here more than it would in most projects since QixOS is fundamentally a security project which asks for your trust.
+LLMs introduce a new supply chain dependency and potentially introduce systemic risks where LLMs have blind spots.
+For these reasons the use of LLMs may change the security profile for some users and it is important that they are aware of this in order to make an informed choice.
+
+Contributions written with LLM assistance are welcome. The standard is the same as for any other contribution: you understand the code,
+you can defend it in review and you have tested it. State which model(s) you've used in the PR description.
+Do not open PRs containing output you have not read yourself.
+
 # License
 Copyright (C) 2026 op (op@qixos.org)
 
