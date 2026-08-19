@@ -56,61 +56,49 @@ The way to contribute will evolve as this project grows. Currently the most desi
 Please get in touch and tell me what you think both about the vision and purpose of the project as well as the architectural decisions made in the project.
 Code contributions are also welcome but be warned that I'll push back on feature creep.
 
-# License and acknowledgement
-We use the GPL license.
-There is code in this repository that was originally taken from evq's nixos template repository, that was published under MIT.
+# Use of LLMs
+QixOS 0.2.0 and after is written together with LLM coding assistants such as Claude Code.
 
-# OP's PGP key
-I occasionally sign things, here is my pgp key.
------BEGIN PGP PUBLIC KEY BLOCK-----
+Changes are made together with an LLM, not by an LLM, and every code change is understood before it is merged.
+The one exception to this is documentation which is not security critical. It is still read but not as carefully.
+No LLM agent has push access to this repository.
 
-xjMEah8J0BYJKwYBBAHaRw8BAQdATL8KLgl6PGCdiYxiXGumba3Y6vtdY4FLCPIK
-5eV+i0PCwAsEHxYKAH0FgmofCdADCwkHCRCoh83ak/FpmkcUAAAAAAAeACBzYWx0
-QG5vdGF0aW9ucy5zZXF1b2lhLXBncC5vcmfHmolWS+SzKK/sdZorV7tFMejdGN7F
-q+Ei5mJM1KlAHwMVCggCmwECHgkWIQRv8NMh6VjDOh74MPaoh83ak/FpmgAAYOEB
-APYv9cvpxd6X4ya1r1jAu/dRra1tCD2M/rdZd1P/DKoWAP47BO8FaDfN9gQJjN6/
-rno5ae50RiSmJv5MCzyLDcfEBc0OPG9wQHFpeG9zLm9yZz7CwAsEExYKAH0Fgmof
-CdADCwkHCRCoh83ak/FpmkcUAAAAAAAeACBzYWx0QG5vdGF0aW9ucy5zZXF1b2lh
-LXBncC5vcmeAU6EyARPJbvDa1lpEgVcOlAT3HOBZEaGGhp2UxvKUiwMVCggCmwEC
-HgkWIQRv8NMh6VjDOh74MPaoh83ak/FpmgAAfyAA/jvMKBk/jd2yz3LunxS0BTDt
-5+E26HDeSlb5nxr/C+STAP4h3WCUMDQnSYRxF7UvYIJWHhfGalPAzkW6HxXhSkbR
-As0Cb3DCwA4EExYKAIAFgmofCdADCwkHCRCoh83ak/FpmkcUAAAAAAAeACBzYWx0
-QG5vdGF0aW9ucy5zZXF1b2lhLXBncC5vcmfDiKhNNHYlRGauIx+NsTSEk9p8JGV5
-U9Dpac4/gPDzygMVCggCmQECmwECHgkWIQRv8NMh6VjDOh74MPaoh83ak/FpmgAA
-PgwBAMQDdACXLPa3nld8JwU0SJcztur4H5R2ipfkO/QPnza0APoCWyqeKUgdGI/i
-ivsyq9ZHQEecj1UZm1ghTGcQBgVJBc4zBGoht30WCSsGAQQB2kcPAQEHQAh+LW9f
-TzCt8BN68beQhg/wyLjoER6p1kIri9+w2lgOwsDFBBgWCgE3BYJqIbd9BYkAeGFN
-CRCoh83ak/FpmkcUAAAAAAAeACBzYWx0QG5vdGF0aW9ucy5zZXF1b2lhLXBncC5v
-cmcQwmgFj3HDLggSQV1uuQQInZNrUyPFtlg9oKy/dNDNqwKbAr6gBBkWCgBvBYJq
-Ibd9CRDfFygbqxeS4UcUAAAAAAAeACBzYWx0QG5vdGF0aW9ucy5zZXF1b2lhLXBn
-cC5vcmck6SMsQLsmA5kKFJjHbZ/zn+fxHJ3I8BZvyodaFIthOBYhBONQzAkdfzyC
-K3CdNt8XKBurF5LhAAAifgEA1Bsu13+/E3TL7uICcbaNKOXPzKt0GwJvcTbAy0X2
-B88BAJQbCXEbC/GH1UiIjMj8/ii8kmDz51HAzfMJvy2sXFIAFiEEb/DTIelYwzoe
-+DD2qIfN2pPxaZoAAFbQAP4n0+kjGH6q6gvsKmzJrOVe/MmswNYGSMC868b3ZwIK
-QgEAuAOuQCEP3B+MDYmHr4BeMn83crN1NsAMXqMheiYsNADOMwRqHwnQFgkrBgEE
-AdpHDwEBB0Ck9Y++s5uPzwvXguTJDa6owHENNw+FVtr4EmKm8nc0kcLAvwQYFgoB
-MQWCah8J0AkQqIfN2pPxaZpHFAAAAAAAHgAgc2FsdEBub3RhdGlvbnMuc2VxdW9p
-YS1wZ3Aub3JnlYUZxdN1nlcTc50+a/+1AwLToCBHwpSQXtoKgrsxk5ECmwK+oAQZ
-FgoAbwWCah8J0AkQKMldBL1XafFHFAAAAAAAHgAgc2FsdEBub3RhdGlvbnMuc2Vx
-dW9pYS1wZ3Aub3JnFB9NbapzoUrbsCLuaLDg5sxTNFneZyDKqOkziueCbfEWIQS2
-DjPZNFBL6NulmcAoyV0EvVdp8QAAMgkA/i5aoD/iaSwqfmO5shOcl+j8YNNdkkMr
-3FeTGUS84Ig3AQD2z3TyfQ7+aqmGtpjkOY1tJAiuKjsvSiRijuJG4jFMBxYhBG/w
-0yHpWMM6Hvgw9qiHzdqT8WmaAABHCwEA3otNYIJe6+VLRt7D0v2YOsRtlW6tGDCh
-srFlnRvwS/gA/2z1JTnLzkrg0frZZQanKM0rq2ofYJjWoNBhWKScQB8EzjMEah8J
-0BYJKwYBBAHaRw8BAQdAqFYWu7tBM6rCxMHvhWclqKFBt+DfY3g4p4vbAb71nqDC
-wL8EGBYKATEFgmofCdAJEKiHzdqT8WmaRxQAAAAAAB4AIHNhbHRAbm90YXRpb25z
-LnNlcXVvaWEtcGdwLm9yZ+8fgMN7q8gv53gGZsXvWe2GB86ODixIUr3dlhYCnSnA
-ApsgvqAEGRYKAG8FgmofCdAJELg6L7Ro9i73RxQAAAAAAB4AIHNhbHRAbm90YXRp
-b25zLnNlcXVvaWEtcGdwLm9yZ+T5O7PW5ACuJCBE9oOVOiDtiBb7OvbnFhacwr9n
-cAcMFiEEKJPpM+v5yjbOOmlHuDovtGj2LvcAANx4AP9ZCrxnoaHSo42vRDvSMGes
-eaTQY8cZ6nqyUhOPluLWSgEAivgWcmoxhA1X3HJUesBMorSK5hSBg6+0iwU6feZD
-MAoWIQRv8NMh6VjDOh74MPaoh83ak/FpmgAA0vgBAK4fmPq3s73RPotPZhxIqZ7l
-lMdYw6p2ej2l09ltjglRAP4kDNZis1eVYQRwMGxrtKiN0LTm4ee/ULybT2EUq/j9
-Dc44BGofCdASCisGAQQBl1UBBQEBB0DOHdukdjUVkBR680R4nB0r4E0Exn4oUolV
-eh0favK7fgMBCAfCwAAEGBYKAHIFgmofCdAJEKiHzdqT8WmaRxQAAAAAAB4AIHNh
-bHRAbm90YXRpb25zLnNlcXVvaWEtcGdwLm9yZ9a8lto++fRRwUAzaSx3yeZyVr0G
-IbEONVdsk26vXnviApsMFiEEb/DTIelYwzoe+DD2qIfN2pPxaZoAAD9ZAQCmHkVU
-Px3PLJMHqlcLInGqSq+eLFmQejgz/U8aXB+52AD/Reat6whBOMU1BoyPdOLrSqN4
-4Q4CU8rBTmUxm7iLVgs=
-=JFt5
------END PGP PUBLIC KEY BLOCK-----
+This matters here more than it would in most projects since QixOS is fundamentally a security project which asks for your trust.
+LLMs introduce a new supply chain dependency and potentially introduce systemic risks where LLMs have blind spots.
+For these reasons the use of LLMs may change the security profile for some users and it is important that they are aware of this in order to make an informed choice.
+
+Contributions written with LLM assistance are welcome. The standard is the same as for any other contribution: you understand the code,
+you can defend it in review and you have tested it. State which model(s) you've used in the PR description.
+Do not open PRs containing output you have not read yourself.
+
+# License
+Copyright (C) 2026 op (op@qixos.org)
+
+QixOS is licensed under GPL-2.0-or-later.
+
+QixOS is free software: you can redistribute it and/or modify it under the terms
+of the GNU General Public License as published by the Free Software Foundation,
+either version 2 of the License, or (at your option) any later version.
+See [LICENSE](LICENSE) for the full text.
+
+## Acknowledgement
+Parts of QixOS derive from [evq's qubes-nixos-template](https://github.com/evq/qubes-nixos-template),
+Copyright (c) 2024 eV Quirk, originally published under the MIT license:
+
+- `install/build-nix-template/` - carries its own
+  [LICENSE](install/build-nix-template/LICENSE), plus further notices in
+  `install/build-nix-template/tools/iso.nix` for code from misuzu and the
+  Nixpkgs/NixOS contributors.
+- `core/qubes-modules/` and `core/qubes-pkgs/` - each derived file carries an
+  attribution header naming its origin.
+
+MIT permits redistribution under the GPL, so these portions ship as part of QixOS
+under GPL-2.0-or-later. The original MIT permission notice is retained at
+[install/build-nix-template/LICENSE](install/build-nix-template/LICENSE) and applies
+to all evq-derived code in this repository.
+
+# OP's pgp fingerprint
+Full key can be found under `testaments/pubkeys/op.asc`
+```
+6FF0D321E958C33A1EF830F6A887CDDA93F1699A
+```
