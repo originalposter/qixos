@@ -58,6 +58,7 @@
         ./core/qubes-modules/gui.nix
         ./core/qubes-modules/networking.nix
         ./core/qubes-modules/qrexec.nix
+        ./core/qubes-modules/ssh-host-keys.nix
         ./core/qubes-modules/updates.nix
         ./core/qubes-modules/usb.nix
       ];

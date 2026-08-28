@@ -28,6 +28,7 @@ To see how to install QixOS look in the `./install/INSTALL.md` file.
 Especially with a focus on the security of the project. Hopefully this can give people an impression on how many eyes have been on the code.
 - `install` - holds code and documentation needed for installing QixOS
 - `docs` - holds general documentation for QixOS
+  - `CHANGELOG.md` - what changed in each release, and what upgrading asks of you
 
 # Features
 - NixOS templates on QubesOS.
