@@ -1,0 +1,8 @@
+# Python writes bytecode next to any module it imports, so running the qixos-rebuild
+# tests by hand leaves these through the tree. They are a per-interpreter cache with
+# nothing in them worth keeping, and a .pyc that outlives the source it was built from
+# is a confusing thing to find in a repo people are asked to read.
+__pycache__/
+
+# pytest's record of node ids and which tests failed last, for --lf and --ff.
+.pytest_cache/
