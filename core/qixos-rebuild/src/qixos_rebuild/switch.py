@@ -84,9 +84,15 @@ def tar(tardir: Path) -> Path:
 def switch_protocol(tmpl_name: str, blob: ProtocolJson, tardirs: list[Path]):
     log.info("switch protocol beginning")
     log.info(f"calling {tmpl_name} {QREXEC_SERVICE}")
+    # The template evaluates and builds inner configs we do not trust, so its exit status
+    # is the only thing we let it tell us. qrexec connects the service's stdout to ours,
+    # which would otherwise put bytes it chose in front of the user, escape sequences and
+    # all. stderr is left alone: it carries qrexec-client-vm's own diagnostics, which the
+    # service cannot reach.
     qrexec_proc = subprocess.Popen(
         ["qrexec-client-vm", tmpl_name, f"{QREXEC_SERVICE}+"],
-        stdin=subprocess.PIPE
+        stdin=subprocess.PIPE,
+        stdout=subprocess.DEVNULL
     )
     assert qrexec_proc.stdin is not None
     blob_bytes = blob.model_dump_json().encode("utf-8")
