@@ -14,7 +14,7 @@ import shutil
 import os
 import signal
 from string import Template
-from .protocol import ProtocolJson, BreakingProtocolError, VersionNotSupportedError, UntarError, MissingAttributeError, NixosRebuildError, MakeGitError, OomKillerError, SWITCH_LOG_PATH, SWITCH_LOG_TAG
+from .protocol import ProtocolJson, BreakingProtocolError, UnknownError, VersionNotSupportedError, UntarError, MissingAttributeError, NixosRebuildError, MakeGitError, OomKillerError, SWITCH_LOG_PATH, SWITCH_LOG_TAG
 
 # Implements the qixos.Switch protocol between the qixos-admin VM's qixos-rebuild script
 # and the template VM running this script.
@@ -346,9 +346,8 @@ def main():
         log(e)
         sys.exit(e.ERROR_CODE)
     except Exception as e:
-        UNKNOWN_ERROR_CODE = -9999
         log(f"UNKNOWN ERROR code: {e}")
-        sys.exit(UNKNOWN_ERROR_CODE)
+        sys.exit(UnknownError.ERROR_CODE)
 
 
 if __name__ == "__main__":

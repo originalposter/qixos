@@ -36,6 +36,14 @@
       packages = [
         (adminPkgs.python3.withPackages (ps: [ ps.pytest ps.pydantic ps.flake8 ]))
         adminPkgs.qubes-core-admin-client
+
+        (adminPkgs.writeShellScriptBin "run-unit-tests" ''
+          root=$(${pkgs.git}/bin/git rev-parse --show-toplevel) || {
+            echo "run-unit-tests: run this from inside the qixos checkout" >&2
+            exit 1
+          }
+          exec pytest "$root/core/qixos-rebuild/tests" "$@"
+        '')
       ];
 
       # qubes-core-admin-client is a plain mkDerivation rather than a buildPythonPackage,

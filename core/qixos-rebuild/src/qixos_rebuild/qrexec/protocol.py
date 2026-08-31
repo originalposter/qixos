@@ -38,29 +38,35 @@ class ProtocolJson(BaseModel):
 # arrives as something else. 125, 126 and 128+n are qrexec's and the shell's, so these stay
 # below that. The status is the only thing that crosses from the template, so it has to
 # survive the trip.
-class BreakingProtocolError(Exception):
+
+# For the catch-all in qixos_switch.main
+class UnknownError(Exception):
     ERROR_CODE = 10
 
 
-class VersionNotSupportedError(Exception):
+class BreakingProtocolError(Exception):
     ERROR_CODE = 11
 
 
-class UntarError(Exception):
+class VersionNotSupportedError(Exception):
     ERROR_CODE = 12
 
 
-class MissingAttributeError(Exception):
+class UntarError(Exception):
     ERROR_CODE = 13
 
 
-class NixosRebuildError(Exception):
+class MissingAttributeError(Exception):
     ERROR_CODE = 14
 
 
-class MakeGitError(Exception):
+class NixosRebuildError(Exception):
     ERROR_CODE = 15
 
 
-class OomKillerError(Exception):
+class MakeGitError(Exception):
     ERROR_CODE = 16
+
+
+class OomKillerError(Exception):
+    ERROR_CODE = 17
