@@ -10,8 +10,17 @@ class CamelModel(BaseModel):
 
 
 class VmProperties(CamelModel):
+    # Order is the order `apply` reconciles them in. Only netvm cares: it is skipped by
+    # the generic loop and handled separately, because setting it can require starting
+    # the qube it names.
     label: str
     memory: int | None = None
+    maxmem: int | None = None
+    vcpus: int | None = None
+    autostart: bool | None = None
+    include_in_backups: bool | None = None
+    qrexec_timeout: int | None = None
+    shutdown_timeout: int | None = None
     provides_network: bool | None = None
     template_for_dispvms: bool | None = None
     netvm: str | None = "default"
@@ -22,6 +31,18 @@ class VmProperties(CamelModel):
         if v == "none" or v == "":
             return None
         return v
+
+    @model_validator(mode="after")
+    def memory_fits_under_maxmem(self) -> "VmProperties":
+        # qubes takes either write in any order and only bites at VM start, so the config
+        # is the last place this can be caught with a sentence rather than with a qube
+        # that will not boot. maxmem 0 disables ballooning and is not a ceiling.
+        if self.memory is not None and self.maxmem not in (None, 0) and self.memory > self.maxmem:
+            raise ConfigError(
+                f"memory {self.memory} is above maxmem {self.maxmem}, so this qube "
+                "could not balloon down to its own starting size"
+            )
+        return self
 
 
 class LocalFlake(CamelModel):
