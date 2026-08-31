@@ -22,12 +22,9 @@ def vm(**attrs):
         klass="AppVM", template="tmpl", netvm="sys-net",
         label="red", memory=400, maxmem=4000, vcpus=2, autostart=False,
         include_in_backups=True, qrexec_timeout=60, shutdown_timeout=60,
-        provides_network=False, template_for_dispvms=False,
+        provides_network=False, template_for_dispvms=False, default_dispvm=None,
     )
-    stand_in = SimpleNamespace(**{**defaults, **attrs})
-    # Overridden by tests that care. Everything above is a qubes default.
-    stand_in.property_is_default = lambda name: True
-    return stand_in
+    return SimpleNamespace(**{**defaults, **attrs})
 
 
 def nube_config(cls=AppVMConfig, **properties):
@@ -144,11 +141,11 @@ def test_an_undeclared_property_is_not_reverted():
     friends inherit from the template, so reverting means "inherit again" rather than any
     number the config could show you.
 
-    The explicit spelling already exists and is what to use instead: netvm takes the
-    literal "default", which _set_netvm turns into qubesadmin.DEFAULT.
+    netvm is the exception and behaves the other way: its field default is the string
+    "default" rather than None, so omitting it does revert. That split is deliberate for
+    now, not a rule every property follows.
     """
     was_set_by_an_earlier_apply = vm(vcpus=4)
-    was_set_by_an_earlier_apply.property_is_default = lambda name: False
 
     diff = reconcile({"nube": was_set_by_an_earlier_apply}, {"nube": nube_config()})
 

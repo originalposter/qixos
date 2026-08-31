@@ -41,6 +41,11 @@ class NoNetVmError(Exception):
         super().__init__(f"netvm '{net_vm}' could not be found. Make sure qixos admin VM has permission to list it. Required by '{using_vm_name}'")
 
 
+class NoDispVmTemplateError(Exception):
+    def __init__(self, dispvm_template: str, using_vm_name: str) -> None:
+        super().__init__(f"defaultDispvm '{dispvm_template}' could not be found, or does not set templateForDispvms. Required by '{using_vm_name}'")
+
+
 class DuplicateVmName(Exception):
     def __init__(self, duplicate_vm_name: str) -> None:
         super().__init__(f"found duplicate vms with the name '{duplicate_vm_name}'. Make sure only 1 VM has this name in the configuration.")
