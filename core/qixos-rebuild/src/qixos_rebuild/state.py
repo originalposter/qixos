@@ -2,7 +2,7 @@ from qubesadmin.app import QubesBase
 from qubesadmin.vm import QubesVM
 from qubesadmin.exc import QubesDaemonAccessError
 from .config import AppVMConfig, NubeClusterConfig, QixosConfig, StandaloneVMConfig, VmProperties
-from .errors import DuplicateVmName, NoBaseTemplateError, QubesError, RenameError, NoNetVmError
+from .errors import DuplicateVmName, NoBaseTemplateError, NoDispVmTemplateError, QubesError, RenameError, NoNetVmError
 from dataclasses import dataclass
 import traceback
 import os
@@ -207,6 +207,26 @@ def calculate_reconcile_diffs(
     return ReconcileDiff(app_vms_templates, properties, delete_on_removal)
 
 
+def _refers_to_a_capable_vm(
+        app: QubesBase,
+        referenced: str,
+        capability: str,
+        declared: dict[VmName, bool | None],
+) -> bool:
+    """Whether `referenced` will exist and have `capability` set once this config applies.
+
+    A reference may point at a qube already on the system or at one this config declares,
+    and the config wins: it is what the qube is about to become.
+    """
+    assert app.domains is not None
+    in_config = referenced in declared
+    if in_config:
+        return bool(declared[referenced])
+    if referenced in app.domains:
+        return bool(getattr(app.domains[referenced], capability, False))
+    return False
+
+
 # Raises exceptions if the configuration is found to be invalid
 def validate(app: QubesBase, config: QixosConfig, qixos_config_flake: str):
     # TODO: Validate that if local flake urls are ever used then `qixos_config_flake` points to a local url
@@ -220,6 +240,7 @@ def validate(app: QubesBase, config: QixosConfig, qixos_config_flake: str):
     # We need to do 2 passes because a former VM might reference a netvm
     # defined later in the config.
     provides_network = {}
+    template_for_dispvms = {}
     for tmpl_name, cluster_conf in config.nube_clusters.items():
         # Iterate through both template and app VMs
         for vm_name, vm_conf in itertools.chain(
@@ -227,6 +248,7 @@ def validate(app: QubesBase, config: QixosConfig, qixos_config_flake: str):
             [(tmpl_name, cluster_conf.template)]
         ):
             provides_network[vm_name] = vm_conf.properties.provides_network
+            template_for_dispvms[vm_name] = vm_conf.properties.template_for_dispvms
 
     # Validate that
     # - there are not multiple of the same VM name
@@ -251,17 +273,15 @@ def validate(app: QubesBase, config: QixosConfig, qixos_config_flake: str):
             vm_netvm = vm_conf.properties.netvm
             # the netvm is fine if it's either none or default
             if vm_netvm not in (None, "default"):
-                in_qubes = vm_netvm in app.domains
-                in_config = vm_netvm in provides_network
-                if not in_qubes and not in_config:
-                    # the netvm is not in our config nor in the system
+                if not _refers_to_a_capable_vm(app, vm_netvm, "provides_network", provides_network):
                     raise NoNetVmError(vm_netvm, vm_name)
-                if not in_config and in_qubes and not app.domains[vm_netvm].provides_network:
-                    # the netvm is in the system and not in our config but will not provide network
-                    raise NoNetVmError(vm_netvm, vm_name)
-                if in_config and not provides_network[vm_netvm]:
-                    # the netvm is in our config but will not provide network
-                    raise NoNetVmError(vm_netvm, vm_name)
+
+            # Validate defaultDispvm the same way: it must exist and be willing to be a
+            # disposable template.
+            vm_dispvm = vm_conf.properties.default_dispvm
+            if vm_dispvm is not None:
+                if not _refers_to_a_capable_vm(app, vm_dispvm, "template_for_dispvms", template_for_dispvms):
+                    raise NoDispVmTemplateError(vm_dispvm, vm_name)
 
             # Validate rename logic
             vm_rename_from = vm_conf.rename_from

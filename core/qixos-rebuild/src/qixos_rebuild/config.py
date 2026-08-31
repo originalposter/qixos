@@ -23,6 +23,9 @@ class VmProperties(CamelModel):
     shutdown_timeout: int | None = None
     provides_network: bool | None = None
     template_for_dispvms: bool | None = None
+    # After template_for_dispvms: qubes refuses a defaultDispvm whose target does not
+    # carry that flag, and the target may be getting it in this same reconcile.
+    default_dispvm: str | None = None
     netvm: str | None = "default"
 
     @field_validator("netvm", mode="before")
