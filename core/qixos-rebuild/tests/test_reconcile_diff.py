@@ -20,9 +20,14 @@ def vm(**attrs):
     """A stand-in for a QubesVM, with defaults that match nothing the tests ask for."""
     defaults = dict(
         klass="AppVM", template="tmpl", netvm="sys-net",
-        label="red", memory=400, provides_network=False, template_for_dispvms=False,
+        label="red", memory=400, maxmem=4000, vcpus=2, autostart=False,
+        include_in_backups=True, qrexec_timeout=60, shutdown_timeout=60,
+        provides_network=False, template_for_dispvms=False,
     )
-    return SimpleNamespace(**{**defaults, **attrs})
+    stand_in = SimpleNamespace(**{**defaults, **attrs})
+    # Overridden by tests that care. Everything above is a qubes default.
+    stand_in.property_is_default = lambda name: True
+    return stand_in
 
 
 def nube_config(cls=AppVMConfig, **properties):
@@ -101,5 +106,50 @@ def test_memory_reaches_the_diff():
 
 def test_memory_that_already_matches_is_not_set_again():
     diff = reconcile({"nube": vm(memory=600)}, {"nube": nube_config(memory=600)})
+
+    assert diff.properties == {}
+
+
+def test_every_scalar_property_reaches_the_diff():
+    """Each one goes through the generic loop, so this is really a guard on that loop.
+
+    A property added to VmProperties but named differently from the qubesadmin one would
+    read as "no change" forever rather than failing, since getattr falls back to None.
+    """
+    desired = dict(
+        memory=600, maxmem=8000, vcpus=4, autostart=True,
+        includeInBackups=False, qrexecTimeout=120, shutdownTimeout=90,
+    )
+
+    diff = reconcile({"nube": vm()}, {"nube": nube_config(**desired)})
+
+    assert diff.properties["nube"] == {
+        "memory": 600, "maxmem": 8000, "vcpus": 4, "autostart": True,
+        "include_in_backups": False, "qrexec_timeout": 120, "shutdown_timeout": 90,
+    }
+
+
+def test_unset_properties_are_left_alone():
+    """None means qixos does not manage it, not that it should be set to nothing."""
+    diff = reconcile({"nube": vm()}, {"nube": nube_config()})
+
+    assert diff.properties == {}
+
+
+def test_an_undeclared_property_is_not_reverted():
+    """Deliberate: a property qixos does not declare is one it does not touch.
+
+    Reverting it instead would undo anything set by hand with qvm-prefs, on every apply,
+    with no way to opt out. A qube's default is also not a fixed value, since memory and
+    friends inherit from the template, so reverting means "inherit again" rather than any
+    number the config could show you.
+
+    The explicit spelling already exists and is what to use instead: netvm takes the
+    literal "default", which _set_netvm turns into qubesadmin.DEFAULT.
+    """
+    was_set_by_an_earlier_apply = vm(vcpus=4)
+    was_set_by_an_earlier_apply.property_is_default = lambda name: False
+
+    diff = reconcile({"nube": was_set_by_an_earlier_apply}, {"nube": nube_config()})
 
     assert diff.properties == {}
