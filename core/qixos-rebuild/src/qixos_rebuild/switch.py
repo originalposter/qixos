@@ -85,14 +85,19 @@ def switch_protocol(tmpl_name: str, blob: ProtocolJson, tardirs: list[Path]):
     log.info("switch protocol beginning")
     log.info(f"calling {tmpl_name} {QREXEC_SERVICE}")
     # The template evaluates and builds inner configs we do not trust, so its exit status
-    # is the only thing we let it tell us. qrexec connects the service's stdout to ours,
-    # which would otherwise put bytes it chose in front of the user, escape sequences and
-    # all. stderr is left alone: it carries qrexec-client-vm's own diagnostics, which the
-    # service cannot reach.
+    # is the only thing we let it tell us. Both streams have to be closed, not just
+    # stdout: qrexec carries the service's stderr too, as MSG_DATA_STDERR, and
+    # qrexec-client-vm ships --filter-escape-chars-stderr precisely because what lands
+    # there is the remote's output and not its own.
+    #
+    # The cost is qrexec-client-vm's own messages, which go to the same stderr. The exit
+    # status still separates the cases worth acting on: 126 is a policy denial, 125 an
+    # invocation failure, 128+n a signal.
     qrexec_proc = subprocess.Popen(
         ["qrexec-client-vm", tmpl_name, f"{QREXEC_SERVICE}+"],
         stdin=subprocess.PIPE,
-        stdout=subprocess.DEVNULL
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL
     )
     assert qrexec_proc.stdin is not None
     blob_bytes = blob.model_dump_json().encode("utf-8")

@@ -71,15 +71,19 @@ def qrexec(monkeypatch):
     return install
 
 
-def test_the_service_stdout_is_closed(qrexec):
+def test_both_service_streams_are_closed(qrexec):
     fake = qrexec()
 
     switch_protocol("test-template", BLOB, [])
 
-    assert fake.kwargs.get("stdout") is subprocess.DEVNULL, (
-        "the template's stdout is inherited, so whatever it prints lands on the admin's "
-        "terminal"
-    )
+    # qrexec carries both: MSG_DATA_STDOUT and MSG_DATA_STDERR (qrexec.h), and
+    # qrexec-client-vm has --filter-escape-chars-stderr because what arrives there is the
+    # remote's, not its own.
+    for stream in ("stdout", "stderr"):
+        assert fake.kwargs.get(stream) is subprocess.DEVNULL, (
+            f"the template's {stream} is inherited, so whatever it writes there lands on "
+            "the admin's terminal"
+        )
 
 
 def test_nothing_but_the_exit_status_is_read(qrexec):
