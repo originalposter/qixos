@@ -143,7 +143,7 @@ def switch_protocol(tmpl_name: str, blob: ProtocolJson, tardirs: list[Path]):
         # writes, so the exit code is all that crossed. Point at where it can be read.
         raise QixosSwitchError(
             f"qixos.Switch call for [{tmpl_name}] failed with {exit_code}.\n"
-            f"Find the log on {tmpl_name} at {SWITCH_LOG_PATH}"
+            f"Find the log on [{tmpl_name}] at {SWITCH_LOG_PATH}"
         )
 
     log.info("[%s] qixos.Switch finished successfully", tmpl_name)
