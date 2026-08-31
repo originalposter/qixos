@@ -86,11 +86,9 @@ def calculate_reconcile_diffs(
         desired_nube_clusters: dict[TemplateVmName, NubeClusterConfig],
         desired_standalone_nubes: dict[VmName, StandaloneVMConfig]
 ) -> ReconcileDiff:
-    # FIXME: If a VM is not found in managed we skip it with the assumption that
-    # the reason we don't find it is because it has not yet been created.
-    # We should make sure this is actually the reasonable assumption and handling of this case
-    # we should also make sure the properties are set in the case of a created VM
-    # we should apply DRY to setting properties.
+    # A VM not in `managed` does not exist yet, so there is nothing to compare against and
+    # nothing to reconcile. `apply` calls this a second time after creating VMs, with
+    # `managed` re-read, which is what gets a new VM its properties on the same run.
 
     # Set template for app VMs
     app_vms_templates = {}
@@ -130,7 +128,7 @@ def calculate_reconcile_diffs(
                     continue
                 actual = getattr(curr_vm, prop, None)
                 if str(actual) != str(desired):
-                    properties[vm_name] = {prop: desired}
+                    properties.setdefault(vm_name, {})[prop] = desired
 
         # List through each standalone VM
         for vm_name, desired_vm_config in desired_standalone_nubes.items():
@@ -143,7 +141,7 @@ def calculate_reconcile_diffs(
                 continue
             actual = getattr(curr_vm, prop, None)
             if str(actual) != str(desired):
-                properties[vm_name] = {prop: desired}
+                properties.setdefault(vm_name, {})[prop] = desired
 
     # Set netvm
     for desired_template_name, desired_nube_cluster_config in desired_nube_clusters.items():
@@ -164,7 +162,7 @@ def calculate_reconcile_diffs(
             default_netvm = None if curr_vm.klass == "TemplateVM" else app.default_netvm
             # If desired is different from current and they are not both their default values
             if curr_netvm != desired_netvm and (desired_netvm != "default" or curr_netvm != default_netvm):
-                properties[vm_name] = {"netvm": desired_netvm}
+                properties.setdefault(vm_name, {})["netvm"] = desired_netvm
 
     for vm_name, desired_vm_config in desired_standalone_nubes.items():
         if vm_name not in managed:
@@ -179,7 +177,7 @@ def calculate_reconcile_diffs(
         default_netvm = app.default_netvm
         # If desired is different from current and they are not both their default values
         if curr_netvm != desired_netvm and (desired_netvm != "default" or curr_netvm != default_netvm):
-            properties[vm_name] = {"netvm": desired_netvm}
+            properties.setdefault(vm_name, {})["netvm"] = desired_netvm
 
     delete_on_removal = {}
     # Set delete_on_removal
