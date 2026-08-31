@@ -200,7 +200,6 @@ def apply(app: QubesBase, config: QixosConfig, base_template: str, qixos_config_
     # before the creates above and therefore skips every VM this run made: those VMs are
     # not in `managed` yet, so their properties would only be applied by the next apply.
     # Creation sets label, netvm and deleteOnRemoval; everything else arrives here.
-    assert app.domains is not None
     managed = get_managed_vms(app, config.management_tag)
     reconcile_vms(app, state.calculate_reconcile_diffs(
         app, managed, config.nube_clusters, config.standalone_nubes,

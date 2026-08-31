@@ -20,7 +20,7 @@ def vm(**attrs):
     """A stand-in for a QubesVM, with defaults that match nothing the tests ask for."""
     defaults = dict(
         klass="AppVM", template="tmpl", netvm="sys-net",
-        label="red", provides_network=False, template_for_dispvms=False,
+        label="red", memory=400, provides_network=False, template_for_dispvms=False,
     )
     return SimpleNamespace(**{**defaults, **attrs})
 
@@ -84,5 +84,22 @@ def test_matching_properties_are_left_alone():
 def test_a_vm_that_does_not_exist_yet_is_skipped():
     """It has nothing to compare against. `apply` reconciles again once it exists."""
     diff = reconcile({}, {"nube": nube_config(providesNetwork=True)})
+
+    assert diff.properties == {}
+
+
+def test_memory_reaches_the_diff():
+    """The property `memory_matches_expected.py` asserts on.
+
+    It was absent from VmProperties, so pydantic dropped it from the parsed config and an
+    outer config declaring it was silently ignored.
+    """
+    diff = reconcile({"nube": vm(memory=400)}, {"nube": nube_config(memory=600)})
+
+    assert diff.properties["nube"] == {"memory": 600}
+
+
+def test_memory_that_already_matches_is_not_set_again():
+    diff = reconcile({"nube": vm(memory=600)}, {"nube": nube_config(memory=600)})
 
     assert diff.properties == {}
