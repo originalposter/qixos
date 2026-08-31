@@ -11,6 +11,7 @@ class CamelModel(BaseModel):
 
 class VmProperties(CamelModel):
     label: str
+    memory: int | None = None
     provides_network: bool | None = None
     template_for_dispvms: bool | None = None
     netvm: str | None = "default"
