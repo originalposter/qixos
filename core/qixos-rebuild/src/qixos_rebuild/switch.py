@@ -84,6 +84,10 @@ def tar(tardir: Path) -> Path:
 def switch_protocol(tmpl_name: str, blob: ProtocolJson, tardirs: list[Path]):
     log.info("switch protocol beginning")
     log.info(f"calling {tmpl_name} {QREXEC_SERVICE}")
+    # Said before the call, not after a failure. We discard everything the service writes,
+    # so this path is the only account of what it did, and a switch that hangs or is
+    # interrupted never reaches an error message.
+    log.info("Find the log on [%s] at %s", tmpl_name, SWITCH_LOG_PATH)
     # The template evaluates and builds inner configs we do not trust, so its exit status
     # is the only thing we let it tell us. Both streams have to be closed, not just
     # stdout: qrexec carries the service's stderr too, as MSG_DATA_STDERR, and
@@ -139,12 +143,7 @@ def switch_protocol(tmpl_name: str, blob: ProtocolJson, tardirs: list[Path]):
             raise OomKillerError(f"qixos.Switch failed likely due to an out-of-memory killer. Try to increase the RAM size of the {tmpl_name} VM.")
 
         log.error("qixos.Switch call for [%s] failed with: %s", tmpl_name, exit_code)
-        # The reason is on the template and stays there: we discard what the service
-        # writes, so the exit code is all that crossed. Point at where it can be read.
-        raise QixosSwitchError(
-            f"qixos.Switch call for [{tmpl_name}] failed with {exit_code}.\n"
-            f"Find the log on [{tmpl_name}] at {SWITCH_LOG_PATH}"
-        )
+        raise QixosSwitchError(f"qixos.Switch call for [{tmpl_name}] failed with {exit_code}")
 
     log.info("[%s] qixos.Switch finished successfully", tmpl_name)
 
