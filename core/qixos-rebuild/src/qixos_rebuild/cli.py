@@ -7,7 +7,8 @@ import qubesadmin
 from .config import eval_config
 from .apply import apply
 from .switch import switch_templates
-from .errors import ConfigError, DuplicateVmName, NixError, NoBaseTemplateError, NoNetVmError, OomKillerError, QixosSwitchError, QubesError, RenameError, LocalFlakeError
+from .errors import ConfigError, DuplicateVmName, NixError, NoBaseTemplateError, NoNetVmError, QixosSwitchError, QubesError, RenameError, LocalFlakeError
+from .qrexec.protocol import OomKillerError
 from .state import get_managed_vms, diff, validate
 
 

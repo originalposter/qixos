@@ -17,6 +17,7 @@ import subprocess
 import pytest
 
 from qixos_rebuild.errors import QixosSwitchError
+from qixos_rebuild.qrexec import protocol
 from qixos_rebuild.qrexec.protocol import Flake, ProtocolJson, SWITCH_LOG_PATH
 from qixos_rebuild.switch import switch_protocol
 
@@ -123,3 +124,24 @@ def test_a_clean_switch_returns(qrexec):
     qrexec(returncode=0)
 
     switch_protocol("test-template", BLOB, [])
+
+
+def test_error_codes_survive_a_process_exit():
+    """Every protocol code has to fit in the 8 bits an exit status gets.
+
+    The status is the only thing that crosses from the template, so a code that truncates
+    arrives as a different number and matches the wrong branch, or none.
+    """
+    codes = {
+        cls.__name__: cls.ERROR_CODE
+        for cls in vars(protocol).values()
+        if isinstance(cls, type) and issubclass(cls, Exception) and hasattr(cls, "ERROR_CODE")
+    }
+    assert codes, "no protocol errors found, so this test proves nothing"
+
+    for name, code in codes.items():
+        assert code == code & 0xFF, f"{name} is {code}, which exits as {code & 0xFF}"
+        # 125 and 126 are qrexec-client-vm's own, 128+n is a signal, 127 is the shell's.
+        assert code not in (125, 126, 127) and code < 128, f"{name} collides at {code}"
+
+    assert len(set(codes.values())) == len(codes), f"duplicate codes: {codes}"
