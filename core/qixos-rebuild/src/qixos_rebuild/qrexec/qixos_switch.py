@@ -5,6 +5,8 @@
 #  - Swallow stdout in admin
 # TODO: Consider moving protocol reading and writing code to protocol module
 from pathlib import Path
+import logging
+import logging.handlers
 import sys
 import tarfile
 import subprocess
@@ -12,7 +14,7 @@ import shutil
 import os
 import signal
 from string import Template
-from .protocol import ProtocolJson, BreakingProtocolError, VersionNotSupportedError, UntarError, MissingAttributeError, NixosRebuildError, MakeGitError, OomKillerError
+from .protocol import ProtocolJson, BreakingProtocolError, VersionNotSupportedError, UntarError, MissingAttributeError, NixosRebuildError, MakeGitError, OomKillerError, SWITCH_LOG_PATH, SWITCH_LOG_TAG
 
 # Implements the qixos.Switch protocol between the qixos-admin VM's qixos-rebuild script
 # and the template VM running this script.
@@ -48,8 +50,31 @@ INPUT_TEMPLATE_FLAKE_NAME = "template"
 INPUT_FOLLOWED_FROM_TEMPLATE = ["nixpkgs", "qixCore"]
 
 
+_log = logging.getLogger("qixos.switch")
+
+
+def setup_logging():
+    """Send this script's output to the journal and to a file.
+
+    Not to stderr where it is unreadable since it is sent to the admin over qrexec
+    and the admin drops it.
+    """
+    os.makedirs(os.path.dirname(SWITCH_LOG_PATH), exist_ok=True)
+
+    journal = logging.handlers.SysLogHandler("/dev/log")
+    journal.setFormatter(logging.Formatter(f"{SWITCH_LOG_TAG}: %(message)s"))
+
+    # Capped
+    disk = logging.handlers.RotatingFileHandler(SWITCH_LOG_PATH, maxBytes=1 << 20, backupCount=3)
+    disk.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
+
+    _log.setLevel(logging.INFO)
+    _log.addHandler(journal)
+    _log.addHandler(disk)
+
+
 def log(m):
-    print(m, file=sys.stderr)
+    _log.info("%s", m)
 
 
 class TarReader:
@@ -292,6 +317,7 @@ def build_and_switch(update_lockfile: bool, standalone: bool):
 
 
 def main():
+    setup_logging()
     log("qixos.Switch starting...")
     try:
         protocol_result = read_protocol()

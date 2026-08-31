@@ -8,7 +8,7 @@ from qixos_rebuild.errors import LocalFlakeError, QixosSwitchError
 from .config import LocalFlake, QixosConfig, NubeClusterConfig, StandaloneVMConfig
 from qubesadmin.app import QubesBase
 from pathlib import Path
-from qixos_rebuild.qrexec.protocol import ProtocolJson, Flake, FlakeAndDir, OomKillerError
+from qixos_rebuild.qrexec.protocol import ProtocolJson, Flake, FlakeAndDir, OomKillerError, SWITCH_LOG_PATH
 
 QREXEC_SERVICE = "qixos.Switch"
 REMOTE_SWITCH_ARGUMENT = "REMOTE"
@@ -139,7 +139,12 @@ def switch_protocol(tmpl_name: str, blob: ProtocolJson, tardirs: list[Path]):
             raise OomKillerError(f"qixos.Switch failed likely due to an out-of-memory killer. Try to increase the RAM size of the {tmpl_name} VM.")
 
         log.error("qixos.Switch call for [%s] failed with: %s", tmpl_name, exit_code)
-        raise QixosSwitchError(f"qixos.Switch call for [{tmpl_name}] failed with {exit_code}")
+        # The reason is on the template and stays there: we discard what the service
+        # writes, so the exit code is all that crossed. Point at where it can be read.
+        raise QixosSwitchError(
+            f"qixos.Switch call for [{tmpl_name}] failed with {exit_code}.\n"
+            f"Find the log on {tmpl_name} at {SWITCH_LOG_PATH}"
+        )
 
     log.info("[%s] qixos.Switch finished successfully", tmpl_name)
 

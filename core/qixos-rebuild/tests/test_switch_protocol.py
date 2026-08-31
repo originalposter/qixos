@@ -15,7 +15,7 @@ import subprocess
 import pytest
 
 from qixos_rebuild.errors import QixosSwitchError
-from qixos_rebuild.qrexec.protocol import Flake, ProtocolJson
+from qixos_rebuild.qrexec.protocol import Flake, ProtocolJson, SWITCH_LOG_PATH
 from qixos_rebuild.switch import switch_protocol
 
 BLOB = ProtocolJson(
@@ -96,11 +96,15 @@ def test_nothing_but_the_exit_status_is_read(qrexec):
     assert fake.handle.accessed == {"stdin", "wait"}
 
 
-def test_a_failed_switch_raises(qrexec):
+def test_a_failed_switch_raises_and_says_where_to_look(qrexec):
     qrexec(returncode=1)
 
-    with pytest.raises(QixosSwitchError):
+    with pytest.raises(QixosSwitchError) as raised:
         switch_protocol("test-template", BLOB, [])
+
+    # The reason never crosses, so the error has to name the template and the log on it.
+    assert "test-template" in str(raised.value)
+    assert SWITCH_LOG_PATH in str(raised.value)
 
 
 def test_a_clean_switch_returns(qrexec):
