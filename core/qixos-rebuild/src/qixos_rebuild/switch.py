@@ -8,7 +8,7 @@ from qixos_rebuild.errors import LocalFlakeError, QixosSwitchError
 from .config import LocalFlake, QixosConfig, NubeClusterConfig, StandaloneVMConfig
 from qubesadmin.app import QubesBase
 from pathlib import Path
-from qixos_rebuild.qrexec.protocol import ProtocolJson, Flake, FlakeAndDir, OomKillerError
+from qixos_rebuild.qrexec.protocol import ProtocolJson, Flake, FlakeAndDir, OomKillerError, SWITCH_LOG_PATH
 
 QREXEC_SERVICE = "qixos.Switch"
 REMOTE_SWITCH_ARGUMENT = "REMOTE"
@@ -84,9 +84,24 @@ def tar(tardir: Path) -> Path:
 def switch_protocol(tmpl_name: str, blob: ProtocolJson, tardirs: list[Path]):
     log.info("switch protocol beginning")
     log.info(f"calling {tmpl_name} {QREXEC_SERVICE}")
+    # Said before the call, not after a failure. We discard everything the service writes,
+    # so this path is the only account of what it did, and a switch that hangs or is
+    # interrupted never reaches an error message.
+    log.info("Find the log on [%s] at %s", tmpl_name, SWITCH_LOG_PATH)
+    # The template evaluates and builds inner configs we do not trust, so its exit status
+    # is the only thing we let it tell us. Both streams have to be closed, not just
+    # stdout: qrexec carries the service's stderr too, as MSG_DATA_STDERR, and
+    # qrexec-client-vm ships --filter-escape-chars-stderr precisely because what lands
+    # there is the remote's output and not its own.
+    #
+    # The cost is qrexec-client-vm's own messages, which go to the same stderr. The exit
+    # status still separates the cases worth acting on: 126 is a policy denial, 125 an
+    # invocation failure, 128+n a signal.
     qrexec_proc = subprocess.Popen(
         ["qrexec-client-vm", tmpl_name, f"{QREXEC_SERVICE}+"],
-        stdin=subprocess.PIPE
+        stdin=subprocess.PIPE,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL
     )
     assert qrexec_proc.stdin is not None
     blob_bytes = blob.model_dump_json().encode("utf-8")

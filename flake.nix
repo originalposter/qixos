@@ -13,6 +13,14 @@
     pkgs = import nixpkgs {
       inherit system;
     };
+    corePkgs = import nixpkgs {
+      inherit system;
+      overlays = [ self.overlays.base ];
+    };
+    adminPkgs = import nixpkgs {
+      inherit system;
+      overlays = [ self.overlays.admin ];
+    };
   in {
     lib = {
       mkNubeClusterWith = import ./core/qixos-nix-libs/make-nube-cluster.nix { qixosCore = self; };
@@ -21,17 +29,25 @@
       mkNubeStandalone = import ./core/qixos-nix-libs/make-nube-template.nix { qixosCore = self; };
     };
 
-    packages.x86_64-linux = let
-      corePkgs = import nixpkgs {
-        inherit system;
-        overlays = [ self.overlays.base ];
-      };
-      adminPkgs = import nixpkgs {
-        inherit system;
-        overlays = [ self.overlays.admin ];
-      };
-    in
-    {
+    # Everything needed to run the qixos-rebuild test suite and its linter by hand.
+    # `nix develop -c pytest core/qixos-rebuild/tests -v` runs them against the working
+    # tree, with no rebuild and no git step, which `nix build .#qixos-rebuild` needs.
+    devShells.${system}.default = adminPkgs.mkShell {
+      packages = [
+        (adminPkgs.python3.withPackages (ps: [ ps.pytest ps.pydantic ps.flake8 ]))
+        adminPkgs.qubes-core-admin-client
+      ];
+
+      # qubes-core-admin-client is a plain mkDerivation rather than a buildPythonPackage,
+      # so python3.withPackages cannot compose it and its site-packages has to be added
+      # here. Inside a nix build the python setup hooks do this from propagatedBuildInputs.
+      shellHook = ''
+        root=$(${pkgs.git}/bin/git rev-parse --show-toplevel 2>/dev/null || echo "$PWD")
+        export PYTHONPATH="$root/core/qixos-rebuild/src:${adminPkgs.qubes-core-admin-client}/${adminPkgs.python3.sitePackages}''${PYTHONPATH:+:$PYTHONPATH}"
+      '';
+    };
+
+    packages.x86_64-linux = {
       inherit (corePkgs)
         qubes-gui-common
         qubes-core-vchan-xen

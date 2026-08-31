@@ -1,5 +1,10 @@
 from pydantic import BaseModel
 
+# Where qixos.Switch logs on the template. Shared because the admin cannot read that log
+# but has to be able to say where it is.
+SWITCH_LOG_PATH = "/var/qixos/switch.log"
+SWITCH_LOG_TAG = "qixos.Switch"
+
 # If a FlakePath is local it MUST be relative to the tarred directory root
 type FlakeSource = str
 type VmName = str
