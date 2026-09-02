@@ -14,7 +14,11 @@ QUBES_NONE = "none"
 
 
 class CamelModel(BaseModel):
-    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+    # extra="forbid" so an unknown key is an error rather than a silent drop: a misspelled
+    # property, or one this qixos does not know yet, otherwise leaves a config that
+    # quietly does less than it says. Both spellings of a field stay valid, since
+    # populate_by_name makes them names rather than extras.
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="forbid")
 
 
 class VmProperties(CamelModel):

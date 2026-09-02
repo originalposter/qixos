@@ -2,6 +2,8 @@
 import pytest
 
 from qixos_rebuild.config import VmProperties
+from pydantic import ValidationError
+
 from qixos_rebuild.errors import ConfigError
 
 
@@ -24,3 +26,15 @@ def test_memory_above_maxmem_is_refused():
 ])
 def test_workable_combinations_are_accepted(kwargs):
     assert props(**kwargs) is not None
+
+
+def test_an_unknown_property_is_refused():
+    """A misspelled or not-yet-supported property, which pydantic would otherwise drop."""
+    with pytest.raises(ValidationError):
+        props(memroy=600)
+
+
+@pytest.mark.parametrize("spelling", ["providesNetwork", "provides_network"])
+def test_both_spellings_of_a_field_are_still_accepted(spelling):
+    """populate_by_name makes these names rather than extras, so forbid does not bite."""
+    assert props(**{spelling: True}).provides_network is True
