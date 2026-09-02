@@ -193,6 +193,15 @@ def calculate_reconcile_diffs(
     return ReconcileDiff(app_vms_templates, properties, delete_on_removal)
 
 
+def _declared_vms(config: QixosConfig):
+    """Every VM this config declares, whatever its class.
+    """
+    for tmpl_name, cluster_conf in config.nube_clusters.items():
+        yield from cluster_conf.app_vms.items()
+        yield tmpl_name, cluster_conf.template
+    yield from config.standalone_nubes.items()
+
+
 def _wants_a_change(curr_vm: QubesVM, prop: str, desired: PropertyValue) -> bool:
     """Whether `prop` on this VM is not already what the config asks for.
 
@@ -246,14 +255,9 @@ def validate(app: QubesBase, config: QixosConfig, qixos_config_flake: str):
     # defined later in the config.
     provides_network = {}
     template_for_dispvms = {}
-    for tmpl_name, cluster_conf in config.nube_clusters.items():
-        # Iterate through both template and app VMs
-        for vm_name, vm_conf in itertools.chain(
-            cluster_conf.app_vms.items(),
-            [(tmpl_name, cluster_conf.template)]
-        ):
-            provides_network[vm_name] = vm_conf.properties.provides_network
-            template_for_dispvms[vm_name] = vm_conf.properties.template_for_dispvms
+    for vm_name, vm_conf in _declared_vms(config):
+        provides_network[vm_name] = vm_conf.properties.provides_network
+        template_for_dispvms[vm_name] = vm_conf.properties.template_for_dispvms
 
     # Validate that
     # - there are not multiple of the same VM name
@@ -261,47 +265,42 @@ def validate(app: QubesBase, config: QixosConfig, qixos_config_flake: str):
     # - vm renamed from exists or two VMs rename from the same VM
     vm_names = set()
     renamed_from_vm_names = set()
-    for tmpl_name, cluster_conf in config.nube_clusters.items():
-        # Iterate through both template and app VMs
-        for vm_name, vm_conf in itertools.chain(
-            cluster_conf.app_vms.items(),
-            [(tmpl_name, cluster_conf.template)]
-        ):
-            # Validate each VM appearing only once
-            if vm_name in vm_names:
-                raise DuplicateVmName(vm_name)
-            vm_names.add(vm_name)
+    for vm_name, vm_conf in _declared_vms(config):
+        # Validate each VM appearing only once
+        if vm_name in vm_names:
+            raise DuplicateVmName(vm_name)
+        vm_names.add(vm_name)
 
-            # Validate netvms
-            # - make sure the network VM exists
-            # - the netvm will have the provides_network property
-            vm_netvm = vm_conf.properties.netvm
-            # only a name is a reference: None is unmanaged, and the two sentinels
-            # name no qube
-            if vm_netvm not in (None, QUBES_DEFAULT, QUBES_NONE):
-                if not _refers_to_a_capable_vm(app, vm_netvm, "provides_network", provides_network):
-                    raise NoNetVmError(vm_netvm, vm_name)
+        # Validate netvms
+        # - make sure the network VM exists
+        # - the netvm will have the provides_network property
+        vm_netvm = vm_conf.properties.netvm
+        # only a name is a reference: None is unmanaged, and the two sentinels
+        # name no qube
+        if vm_netvm not in (None, QUBES_DEFAULT, QUBES_NONE):
+            if not _refers_to_a_capable_vm(app, vm_netvm, "provides_network", provides_network):
+                raise NoNetVmError(vm_netvm, vm_name)
 
-            # Validate defaultDispvm the same way: it must exist and be willing to be a
-            # disposable template.
-            vm_dispvm = vm_conf.properties.default_dispvm
-            if vm_dispvm is not None:
-                if not _refers_to_a_capable_vm(app, vm_dispvm, "template_for_dispvms", template_for_dispvms):
-                    raise NoDispVmTemplateError(vm_dispvm, vm_name)
+        # Validate defaultDispvm the same way: it must exist and be willing to be a
+        # disposable template.
+        vm_dispvm = vm_conf.properties.default_dispvm
+        if vm_dispvm is not None:
+            if not _refers_to_a_capable_vm(app, vm_dispvm, "template_for_dispvms", template_for_dispvms):
+                raise NoDispVmTemplateError(vm_dispvm, vm_name)
 
-            # Validate rename logic
-            vm_rename_from = vm_conf.rename_from
-            if vm_rename_from is not None:
-                if vm_rename_from == vm_name:
-                    raise RenameError.rename_to_itself(vm_name)
+        # Validate rename logic
+        vm_rename_from = vm_conf.rename_from
+        if vm_rename_from is not None:
+            if vm_rename_from == vm_name:
+                raise RenameError.rename_to_itself(vm_name)
 
-                if vm_rename_from not in app.domains:
-                    raise RenameError.src_missing(vm_rename_from, vm_name)
+            if vm_rename_from not in app.domains:
+                raise RenameError.src_missing(vm_rename_from, vm_name)
 
-                if vm_rename_from in renamed_from_vm_names:
-                    raise RenameError.duplicate_renames(vm_rename_from)
+            if vm_rename_from in renamed_from_vm_names:
+                raise RenameError.duplicate_renames(vm_rename_from)
 
-                renamed_from_vm_names.add(vm_rename_from)
+            renamed_from_vm_names.add(vm_rename_from)
 
 
 def diff(app: QubesBase, config: QixosConfig, managed: dict[str, QubesVM]) -> VmChanges:

@@ -35,9 +35,7 @@ class VmProperties(CamelModel):
     # carry that flag, and the target may be getting it in this same reconcile.
     default_dispvm: str | None = None
     # Three states, like every other property here: unset means qixos does not manage it,
-    # QUBES_DEFAULT means the qubes default, QUBES_NONE means no network at all. It used
-    # to default to QUBES_DEFAULT, which made omitting it revert a qube rather than leave
-    # it alone, and collapsed QUBES_NONE into None so the two were indistinguishable.
+    # QUBES_DEFAULT means the qubes default, QUBES_NONE means no network at all.
     netvm: str | None = None
 
     @field_validator("netvm", mode="before")

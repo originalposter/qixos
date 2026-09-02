@@ -10,6 +10,7 @@ import pytest
 from qixos_rebuild import state
 from qixos_rebuild.config import (
     AppVMConfig,
+    StandaloneVMConfig,
     NubeClusterConfig,
     QixosConfig,
     TemplateVMConfig,
@@ -25,11 +26,12 @@ def nube_config(cls=AppVMConfig, **properties):
     )
 
 
-def config(**app_vms):
+def config(standalones=None, **app_vms):
     return QixosConfig(
         nubeClusters={"tmpl": NubeClusterConfig(
             appVms=app_vms, template=nube_config(TemplateVMConfig),
         )},
+        standaloneNubes=standalones or {},
         managementTag="created-by-qixos-admin",
         baseTemplate="base",
     )
@@ -84,4 +86,31 @@ def test_netvm_goes_through_the_same_check():
     validate(app(), config(
         router=nube_config(providesNetwork=True),
         user=nube_config(netvm="router"),
+    ))
+
+
+def standalone(**properties):
+    return nube_config(StandaloneVMConfig, **properties)
+
+
+def test_a_standalone_is_validated_too():
+    with pytest.raises(NoNetVmError):
+        validate(app(), config(standalones={"alone": standalone(netvm="nowhere")}))
+
+    with pytest.raises(NoDispVmTemplateError):
+        validate(app(), config(standalones={"alone": standalone(defaultDispvm="nowhere")}))
+
+
+def test_a_standalone_cannot_reuse_a_cluster_name():
+    from qixos_rebuild.errors import DuplicateVmName
+
+    with pytest.raises(DuplicateVmName):
+        validate(app(), config(nube=nube_config(), standalones={"nube": standalone()}))
+
+
+def test_a_standalone_can_be_referenced_by_a_cluster_vm():
+    """The other half: it is now in the map references resolve against."""
+    validate(app(), config(
+        user=nube_config(netvm="router"),
+        standalones={"router": standalone(providesNetwork=True)},
     ))
