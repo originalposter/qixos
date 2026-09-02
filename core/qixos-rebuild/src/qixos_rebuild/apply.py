@@ -4,7 +4,7 @@ from qubesadmin.vm import QubesVM
 from qubesadmin.exc import QubesVMNotStartedError
 from . import state
 from .state import ReconcileDiff, mark_delete_on_removal, get_managed_vms, validate
-from .config import QixosConfig, NubeClusterConfig, AppVMConfig, StandaloneVMConfig, VmProperties
+from .config import QUBES_DEFAULT, QixosConfig, NubeClusterConfig, AppVMConfig, StandaloneVMConfig, VmProperties
 
 
 # Internal function for setting the netvm property.
@@ -16,19 +16,19 @@ def _set_netvm(app: QubesBase, desired_netvm: str | None, curr_vm: QubesVM):
     # checking if assignment is warranted and for printing. Should be fine.
     default_netvm = None if curr_vm.klass == "TemplateVM" else app.default_netvm
     # If desired is different from current and they are not both their default values
-    if curr_netvm != desired_netvm and (desired_netvm != "default" or curr_netvm != default_netvm):
+    if curr_netvm != desired_netvm and (desired_netvm != QUBES_DEFAULT or curr_netvm != default_netvm):
         old_netvm = curr_netvm
-        actual_desired_netvm = desired_netvm if desired_netvm != "default" else qubesadmin.DEFAULT
+        actual_desired_netvm = desired_netvm if desired_netvm != QUBES_DEFAULT else qubesadmin.DEFAULT
         try:
             curr_vm.netvm = actual_desired_netvm
         except QubesVMNotStartedError:
             assert app.domains is not None
             # FIXME: Need to deal with the vm being paused rather than stopped
             # FIXME: Could this exception be triggered by not an chained netvm not being started?
-            not_running_domain = app.domains[desired_netvm] if desired_netvm != "default" else app.domains[default_netvm]
+            not_running_domain = app.domains[desired_netvm] if desired_netvm != QUBES_DEFAULT else app.domains[default_netvm]
             not_running_domain.start()
             curr_vm.netvm = actual_desired_netvm
-        if desired_netvm != "default":
+        if desired_netvm != QUBES_DEFAULT:
             print(f"  '{curr_vm.name}': netvm {old_netvm} -> {desired_netvm}")
         else:
             print(f"  '{curr_vm.name}': netvm {old_netvm} -> default")
@@ -154,7 +154,11 @@ def reconcile_vms(app: QubesBase, reconcile_diff: ReconcileDiff):
                 actual = getattr(curr_vm, prop, None)
                 desired = update_prop[prop]
                 print(f"  '{vm_name}': {prop} {actual} -> {desired}")
-                setattr(curr_vm, prop, desired)
+                # "default" asks for the qubes default rather than for a qube of that
+                # name. Only string properties can carry it: an int field rejects it at
+                # parse time.
+                setattr(curr_vm, prop,
+                        qubesadmin.DEFAULT if desired == QUBES_DEFAULT else desired)
 
     # Set netvm
     for vm_name, update_prop in reconcile_diff.properties.items():

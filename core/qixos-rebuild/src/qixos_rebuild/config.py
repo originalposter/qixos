@@ -5,6 +5,14 @@ from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 from pydantic.alias_generators import to_camel
 
 
+# Values a config can give a property in place of a qube name. Both are translated at the
+# write boundary rather than passed through: QUBES_DEFAULT becomes qubesadmin.DEFAULT, and
+# QUBES_NONE becomes None. A qube actually named "default" or "none" is unreferenceable,
+# which is the price of spelling these in the same field as the name.
+QUBES_DEFAULT = "default"
+QUBES_NONE = "none"
+
+
 class CamelModel(BaseModel):
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
@@ -26,12 +34,12 @@ class VmProperties(CamelModel):
     # After template_for_dispvms: qubes refuses a defaultDispvm whose target does not
     # carry that flag, and the target may be getting it in this same reconcile.
     default_dispvm: str | None = None
-    netvm: str | None = "default"
+    netvm: str | None = QUBES_DEFAULT
 
     @field_validator("netvm", mode="before")
     @classmethod
     def none_string_to_none(cls, v):
-        if v == "none" or v == "":
+        if v == QUBES_NONE or v == "":
             return None
         return v
 
