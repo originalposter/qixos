@@ -34,14 +34,16 @@ class VmProperties(CamelModel):
     # After template_for_dispvms: qubes refuses a defaultDispvm whose target does not
     # carry that flag, and the target may be getting it in this same reconcile.
     default_dispvm: str | None = None
-    netvm: str | None = QUBES_DEFAULT
+    # Three states, like every other property here: unset means qixos does not manage it,
+    # QUBES_DEFAULT means the qubes default, QUBES_NONE means no network at all. It used
+    # to default to QUBES_DEFAULT, which made omitting it revert a qube rather than leave
+    # it alone, and collapsed QUBES_NONE into None so the two were indistinguishable.
+    netvm: str | None = None
 
     @field_validator("netvm", mode="before")
     @classmethod
-    def none_string_to_none(cls, v):
-        if v == QUBES_NONE or v == "":
-            return None
-        return v
+    def empty_string_means_none(cls, v):
+        return QUBES_NONE if v == "" else v
 
     @model_validator(mode="after")
     def memory_fits_under_maxmem(self) -> "VmProperties":

@@ -4,34 +4,34 @@ from qubesadmin.vm import QubesVM
 from qubesadmin.exc import QubesVMNotStartedError
 from . import state
 from .state import ReconcileDiff, mark_delete_on_removal, get_managed_vms, validate
-from .config import QUBES_DEFAULT, QixosConfig, NubeClusterConfig, AppVMConfig, StandaloneVMConfig, VmProperties
+from .config import QUBES_DEFAULT, QUBES_NONE, QixosConfig, NubeClusterConfig, AppVMConfig, StandaloneVMConfig, VmProperties
 
 
 # Internal function for setting the netvm property.
 # Needs to deal with default values and starting up stopped network VMs
 def _set_netvm(app: QubesBase, desired_netvm: str | None, curr_vm: QubesVM):
-    curr_netvm = curr_vm.netvm
+    # None is a config that says nothing about netvm, so there is nothing to do. Whether
+    # a change is warranted is decided by the diff; this only carries it out.
+    if desired_netvm is None:
+        return
 
-    # Hardcoding default template netvm to be None for the purposes of
-    # checking if assignment is warranted and for printing. Should be fine.
-    default_netvm = None if curr_vm.klass == "TemplateVM" else app.default_netvm
-    # If desired is different from current and they are not both their default values
-    if curr_netvm != desired_netvm and (desired_netvm != QUBES_DEFAULT or curr_netvm != default_netvm):
-        old_netvm = curr_netvm
-        actual_desired_netvm = desired_netvm if desired_netvm != QUBES_DEFAULT else qubesadmin.DEFAULT
-        try:
-            curr_vm.netvm = actual_desired_netvm
-        except QubesVMNotStartedError:
-            assert app.domains is not None
-            # FIXME: Need to deal with the vm being paused rather than stopped
-            # FIXME: Could this exception be triggered by not an chained netvm not being started?
-            not_running_domain = app.domains[desired_netvm] if desired_netvm != QUBES_DEFAULT else app.domains[default_netvm]
-            not_running_domain.start()
-            curr_vm.netvm = actual_desired_netvm
-        if desired_netvm != QUBES_DEFAULT:
-            print(f"  '{curr_vm.name}': netvm {old_netvm} -> {desired_netvm}")
-        else:
-            print(f"  '{curr_vm.name}': netvm {old_netvm} -> default")
+    old_netvm = curr_vm.netvm
+    if desired_netvm == QUBES_NONE:
+        assignment = None
+    elif desired_netvm == QUBES_DEFAULT:
+        assignment = qubesadmin.DEFAULT
+    else:
+        assignment = desired_netvm
+
+    try:
+        curr_vm.netvm = assignment
+    except QubesVMNotStartedError:
+        assert app.domains is not None
+        # FIXME: Need to deal with the vm being paused rather than stopped
+        # FIXME: Could this exception be triggered by not an chained netvm not being started?
+        app.domains[desired_netvm].start()
+        curr_vm.netvm = assignment
+    print(f"  '{curr_vm.name}': netvm {old_netvm} -> {desired_netvm}")
 
 
 def rename_vm(
