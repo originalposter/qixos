@@ -12,6 +12,7 @@ from qixos_rebuild.config import (
     QUBES_DEFAULT,
     QUBES_NONE,
     AppVMConfig,
+    StandaloneVMConfig,
     NubeClusterConfig,
     TemplateVMConfig,
     VmProperties,
@@ -32,9 +33,12 @@ def vm(is_default=True, **attrs):
     return stand_in
 
 
-def nube_config(cls=AppVMConfig, **properties):
+def nube_config(cls=AppVMConfig, delete_on_removal=False, **properties):
+    # deleteOnRemoval sits on the config, not on properties, and VmProperties would drop
+    # it without a word.
     return cls(
         properties=VmProperties(**{"label": "red", **properties}),
+        deleteOnRemoval=delete_on_removal,
         remoteFlake={"url": "github:example/nube", "output": "qixosAppConfigurations.x"},
     )
 
@@ -45,13 +49,14 @@ def no_removal_list(monkeypatch):
     monkeypatch.setattr(state, "should_delete_on_removal", lambda name: False)
 
 
-def reconcile(managed, app_vms):
+def reconcile(managed, app_vms, standalones=None):
     cluster = NubeClusterConfig(
         appVms=app_vms,
         template=nube_config(TemplateVMConfig),
     )
     return state.calculate_reconcile_diffs(
-        SimpleNamespace(default_netvm="sys-net"), managed, {"tmpl": cluster}, {},
+        SimpleNamespace(default_netvm="sys-net"), managed, {"tmpl": cluster},
+        standalones or {},
     )
 
 
@@ -203,3 +208,25 @@ def test_netvm_none_on_a_qube_that_already_has_no_network_is_a_no_op():
     diff = reconcile({"nube": vm(netvm=None)}, {"nube": nube_config(netvm=QUBES_NONE)})
 
     assert diff.properties == {}
+
+
+def test_a_standalone_gets_its_properties_too():
+    """Standalones go through the same walk as cluster VMs."""
+    diff = reconcile(
+        {"alone": vm(vcpus=2)}, {},
+        standalones={"alone": nube_config(StandaloneVMConfig, vcpus=4)},
+    )
+
+    assert diff.properties["alone"] == {"vcpus": 4}
+
+
+def test_delete_on_removal_is_reported_when_it_differs(monkeypatch):
+    """Both directions, since the qube's current setting is what it is compared against."""
+    monkeypatch.setattr(state, "should_delete_on_removal", lambda name: False)
+    turning_on = nube_config(delete_on_removal=True)
+    assert reconcile({"nube": vm()}, {"nube": turning_on}).delete_on_removal == {"nube": True}
+
+    monkeypatch.setattr(state, "should_delete_on_removal", lambda name: True)
+    turning_off = nube_config(delete_on_removal=False)
+    assert reconcile({"nube": vm()}, {"nube": turning_off}).delete_on_removal == {"nube": False}
+    assert reconcile({"nube": vm()}, {"nube": turning_on}).delete_on_removal == {}
