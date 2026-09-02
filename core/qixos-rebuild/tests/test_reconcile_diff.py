@@ -166,10 +166,10 @@ def test_asking_for_the_default_leaves_an_unset_property_alone():
 
 
 def test_asking_for_the_default_unpins_a_pinned_property():
-    """Reads the same either way, and only starts differing when the default moves.
+    """A pinned value equal to the default reads the same as an inherited one.
 
-    This is the case the old name comparison got wrong: it saw "sys-net" on both sides
-    and left the qube pinned, so it would not follow a later change to the system default.
+    Comparing names cannot tell them apart. The difference only shows once the system
+    default moves and a pinned qube fails to follow it.
     """
     diff = reconcile({"nube": vm(netvm="sys-net", is_default=False)},
                      {"nube": nube_config(netvm=QUBES_DEFAULT)})
@@ -186,7 +186,7 @@ def test_default_dispvm_can_ask_for_the_default_too():
 
 
 def test_netvm_omitted_leaves_the_network_alone():
-    """It used to default to QUBES_DEFAULT, so omitting it unpinned a qube's network."""
+    """Saying nothing about netvm is distinct from asking for QUBES_NONE."""
     diff = reconcile({"nube": vm(netvm="sys-net", is_default=False)}, {"nube": nube_config()})
 
     assert diff.properties == {}
