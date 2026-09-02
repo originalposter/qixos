@@ -9,6 +9,7 @@ import pytest
 
 from qixos_rebuild import state
 from qixos_rebuild.config import (
+    QUBES_DEFAULT,
     AppVMConfig,
     NubeClusterConfig,
     TemplateVMConfig,
@@ -16,7 +17,7 @@ from qixos_rebuild.config import (
 )
 
 
-def vm(**attrs):
+def vm(is_default=True, **attrs):
     """A stand-in for a QubesVM, with defaults that match nothing the tests ask for."""
     defaults = dict(
         klass="AppVM", template="tmpl", netvm="sys-net",
@@ -24,7 +25,10 @@ def vm(**attrs):
         include_in_backups=True, qrexec_timeout=60, shutdown_timeout=60,
         provides_network=False, template_for_dispvms=False, default_dispvm=None,
     )
-    return SimpleNamespace(**{**defaults, **attrs})
+    stand_in = SimpleNamespace(**{**defaults, **attrs})
+    # Whether a property is unset or pinned. Overridden by tests about "default".
+    stand_in.property_is_default = lambda name: is_default
+    return stand_in
 
 
 def nube_config(cls=AppVMConfig, **properties):
@@ -150,3 +154,31 @@ def test_an_undeclared_property_is_not_reverted():
     diff = reconcile({"nube": was_set_by_an_earlier_apply}, {"nube": nube_config()})
 
     assert diff.properties == {}
+
+
+def test_asking_for_the_default_leaves_an_unset_property_alone():
+    """It is already inheriting, so there is nothing to put back."""
+    diff = reconcile({"nube": vm(netvm="sys-net", is_default=True)},
+                     {"nube": nube_config(netvm=QUBES_DEFAULT)})
+
+    assert diff.properties == {}
+
+
+def test_asking_for_the_default_unpins_a_pinned_property():
+    """Reads the same either way, and only starts differing when the default moves.
+
+    This is the case the old name comparison got wrong: it saw "sys-net" on both sides
+    and left the qube pinned, so it would not follow a later change to the system default.
+    """
+    diff = reconcile({"nube": vm(netvm="sys-net", is_default=False)},
+                     {"nube": nube_config(netvm=QUBES_DEFAULT)})
+
+    assert diff.properties["nube"] == {"netvm": QUBES_DEFAULT}
+
+
+def test_default_dispvm_can_ask_for_the_default_too():
+    """The point of one rule rather than a second _set_x per property."""
+    diff = reconcile({"nube": vm(default_dispvm="some-dvm", is_default=False)},
+                     {"nube": nube_config(defaultDispvm=QUBES_DEFAULT)})
+
+    assert diff.properties["nube"] == {"default_dispvm": QUBES_DEFAULT}

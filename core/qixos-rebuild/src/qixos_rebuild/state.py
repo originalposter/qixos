@@ -1,7 +1,7 @@
 from qubesadmin.app import QubesBase
 from qubesadmin.vm import QubesVM
 from qubesadmin.exc import QubesDaemonAccessError
-from .config import AppVMConfig, NubeClusterConfig, QixosConfig, StandaloneVMConfig, VmProperties
+from .config import QUBES_DEFAULT, AppVMConfig, NubeClusterConfig, QixosConfig, StandaloneVMConfig, VmProperties
 from .errors import DuplicateVmName, NoBaseTemplateError, NoDispVmTemplateError, QubesError, RenameError, NoNetVmError
 from dataclasses import dataclass
 import traceback
@@ -126,8 +126,7 @@ def calculate_reconcile_diffs(
                 desired = getattr(desired_vm_config.properties, prop, None)
                 if desired is None:
                     continue
-                actual = getattr(curr_vm, prop, None)
-                if str(actual) != str(desired):
+                if _wants_a_change(curr_vm, prop, desired):
                     properties.setdefault(vm_name, {})[prop] = desired
 
         # List through each standalone VM
@@ -139,8 +138,7 @@ def calculate_reconcile_diffs(
             desired = getattr(desired_vm_config.properties, prop, None)
             if desired is None:
                 continue
-            actual = getattr(curr_vm, prop, None)
-            if str(actual) != str(desired):
+            if _wants_a_change(curr_vm, prop, desired):
                 properties.setdefault(vm_name, {})[prop] = desired
 
     # Set netvm
@@ -155,13 +153,7 @@ def calculate_reconcile_diffs(
                 continue
             desired_netvm = desired_vm_config.properties.netvm
             curr_vm = managed[vm_name]
-            curr_netvm = curr_vm.netvm
-
-            # Hardcoding default template netvm to be None for the purposes of
-            # checking if assignment is warranted and for printing. Should be fine.
-            default_netvm = None if curr_vm.klass == "TemplateVM" else app.default_netvm
-            # If desired is different from current and they are not both their default values
-            if curr_netvm != desired_netvm and (desired_netvm != "default" or curr_netvm != default_netvm):
+            if _wants_a_change(curr_vm, "netvm", desired_netvm):
                 properties.setdefault(vm_name, {})["netvm"] = desired_netvm
 
     for vm_name, desired_vm_config in desired_standalone_nubes.items():
@@ -170,13 +162,7 @@ def calculate_reconcile_diffs(
             continue
         desired_netvm = desired_vm_config.properties.netvm
         curr_vm = managed[vm_name]
-        curr_netvm = curr_vm.netvm
-
-        # Hardcoding default template netvm to be None for the purposes of
-        # checking if assignment is warranted and for printing. Should be fine.
-        default_netvm = app.default_netvm
-        # If desired is different from current and they are not both their default values
-        if curr_netvm != desired_netvm and (desired_netvm != "default" or curr_netvm != default_netvm):
+        if _wants_a_change(curr_vm, "netvm", desired_netvm):
             properties.setdefault(vm_name, {})["netvm"] = desired_netvm
 
     delete_on_removal = {}
@@ -205,6 +191,19 @@ def calculate_reconcile_diffs(
             delete_on_removal[vm_name] = False
 
     return ReconcileDiff(app_vms_templates, properties, delete_on_removal)
+
+
+def _wants_a_change(curr_vm: QubesVM, prop: str, desired: PropertyValue) -> bool:
+    """Whether `prop` on this VM is not already what the config asks for.
+
+    `"default"` asks for the qubes default, which is a state rather than a value: a qube
+    pinned to a name that currently equals the default reads the same as one inheriting
+    it, and only starts differing when the default later moves. The admin API reports
+    which it is, in the same property.Get the value itself comes from.
+    """
+    if desired == QUBES_DEFAULT:
+        return not curr_vm.property_is_default(prop)
+    return str(getattr(curr_vm, prop, None)) != str(desired)
 
 
 def _refers_to_a_capable_vm(
@@ -272,7 +271,7 @@ def validate(app: QubesBase, config: QixosConfig, qixos_config_flake: str):
             # - the netvm will have the provides_network property
             vm_netvm = vm_conf.properties.netvm
             # the netvm is fine if it's either none or default
-            if vm_netvm not in (None, "default"):
+            if vm_netvm not in (None, QUBES_DEFAULT):
                 if not _refers_to_a_capable_vm(app, vm_netvm, "provides_network", provides_network):
                     raise NoNetVmError(vm_netvm, vm_name)
 
