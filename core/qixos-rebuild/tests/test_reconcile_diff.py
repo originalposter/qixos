@@ -10,6 +10,7 @@ import pytest
 from qixos_rebuild import state
 from qixos_rebuild.config import (
     QUBES_DEFAULT,
+    QUBES_NONE,
     AppVMConfig,
     NubeClusterConfig,
     TemplateVMConfig,
@@ -33,7 +34,7 @@ def vm(is_default=True, **attrs):
 
 def nube_config(cls=AppVMConfig, **properties):
     return cls(
-        properties=VmProperties(**{"label": "red", "netvm": "sys-net", **properties}),
+        properties=VmProperties(**{"label": "red", **properties}),
         remoteFlake={"url": "github:example/nube", "output": "qixosAppConfigurations.x"},
     )
 
@@ -182,3 +183,23 @@ def test_default_dispvm_can_ask_for_the_default_too():
                      {"nube": nube_config(defaultDispvm=QUBES_DEFAULT)})
 
     assert diff.properties["nube"] == {"default_dispvm": QUBES_DEFAULT}
+
+
+def test_netvm_omitted_leaves_the_network_alone():
+    """It used to default to QUBES_DEFAULT, so omitting it unpinned a qube's network."""
+    diff = reconcile({"nube": vm(netvm="sys-net", is_default=False)}, {"nube": nube_config()})
+
+    assert diff.properties == {}
+
+
+def test_netvm_none_turns_the_network_off():
+    """Distinct from omitting it, which is the whole point of the third state."""
+    diff = reconcile({"nube": vm(netvm="sys-net")}, {"nube": nube_config(netvm=QUBES_NONE)})
+
+    assert diff.properties["nube"] == {"netvm": QUBES_NONE}
+
+
+def test_netvm_none_on_a_qube_that_already_has_no_network_is_a_no_op():
+    diff = reconcile({"nube": vm(netvm=None)}, {"nube": nube_config(netvm=QUBES_NONE)})
+
+    assert diff.properties == {}

@@ -1,7 +1,7 @@
 from qubesadmin.app import QubesBase
 from qubesadmin.vm import QubesVM
 from qubesadmin.exc import QubesDaemonAccessError
-from .config import QUBES_DEFAULT, AppVMConfig, NubeClusterConfig, QixosConfig, StandaloneVMConfig, VmProperties
+from .config import QUBES_DEFAULT, QUBES_NONE, AppVMConfig, NubeClusterConfig, QixosConfig, StandaloneVMConfig, VmProperties
 from .errors import DuplicateVmName, NoBaseTemplateError, NoDispVmTemplateError, QubesError, RenameError, NoNetVmError
 from dataclasses import dataclass
 import traceback
@@ -201,8 +201,14 @@ def _wants_a_change(curr_vm: QubesVM, prop: str, desired: PropertyValue) -> bool
     it, and only starts differing when the default later moves. The admin API reports
     which it is, in the same property.Get the value itself comes from.
     """
+    if desired is None:
+        # Not managed by this config. The generic loop skips these before calling, but
+        # netvm has its own pass and reaches here.
+        return False
     if desired == QUBES_DEFAULT:
         return not curr_vm.property_is_default(prop)
+    if desired == QUBES_NONE:
+        return getattr(curr_vm, prop, None) is not None
     return str(getattr(curr_vm, prop, None)) != str(desired)
 
 
@@ -270,8 +276,9 @@ def validate(app: QubesBase, config: QixosConfig, qixos_config_flake: str):
             # - make sure the network VM exists
             # - the netvm will have the provides_network property
             vm_netvm = vm_conf.properties.netvm
-            # the netvm is fine if it's either none or default
-            if vm_netvm not in (None, QUBES_DEFAULT):
+            # only a name is a reference: None is unmanaged, and the two sentinels
+            # name no qube
+            if vm_netvm not in (None, QUBES_DEFAULT, QUBES_NONE):
                 if not _refers_to_a_capable_vm(app, vm_netvm, "provides_network", provides_network):
                     raise NoNetVmError(vm_netvm, vm_name)
 
