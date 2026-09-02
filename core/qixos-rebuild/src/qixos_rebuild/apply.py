@@ -26,6 +26,11 @@ def _set_netvm(app: QubesBase, desired_netvm: str | None, curr_vm: QubesVM):
     try:
         curr_vm.netvm = assignment
     except QubesVMNotStartedError:
+        # Only a named netvm is something to bring up: QUBES_DEFAULT resolves in dom0 and
+        # QUBES_NONE names no qube, so getting here on either is a bug rather than a netvm
+        # that needs starting.
+        if desired_netvm in (QUBES_DEFAULT, QUBES_NONE):
+            raise AssertionError(f"unreachable - netvm {desired_netvm} names no qube to start")
         assert app.domains is not None
         # FIXME: Need to deal with the vm being paused rather than stopped
         # FIXME: Could this exception be triggered by not an chained netvm not being started?
