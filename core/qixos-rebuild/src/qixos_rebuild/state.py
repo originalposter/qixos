@@ -1,12 +1,12 @@
 from qubesadmin.app import QubesBase
 from qubesadmin.vm import QubesVM
 from qubesadmin.exc import QubesDaemonAccessError
-from .config import QUBES_DEFAULT, QUBES_NONE, AppVMConfig, NubeClusterConfig, QixosConfig, StandaloneVMConfig, VmProperties
+from .config import QUBES_DEFAULT, QUBES_NONE, AppVMConfig, NubeClusterConfig, QixosConfig, StandaloneVMConfig, VmConfigMixin, VmProperties
 from .errors import DuplicateVmName, NoBaseTemplateError, NoDispVmTemplateError, QubesError, RenameError, NoNetVmError
 from dataclasses import dataclass
 import traceback
 import os
-import itertools
+from collections.abc import Iterator
 from typing import Any
 
 type CurrentVM = QubesVM
@@ -107,99 +107,47 @@ def calculate_reconcile_diffs(
     # The order we go through is the order described in the `VmProperties` class.
     properties = {}
     for prop in list(VmProperties.__annotations__):
-        # Special case netvm because we need to do special handling of it. See `_set_netvm` for details
-        if prop in ("netvm",):
-            continue
-
-        # FIXME: Lots of duplication here, we should clean it up
-        # List through each cluster
-        for desired_template_name, desired_nube_cluster_config in desired_nube_clusters.items():
-            # List through the app VMs and the template VM of the cluster
-            for vm_name, desired_vm_config in itertools.chain(
-                desired_nube_cluster_config.app_vms.items(),
-                [(desired_template_name, desired_nube_cluster_config.template)]
-            ):
-                if vm_name not in managed:
-                    # Has not been created yet
-                    continue
-                curr_vm = managed[vm_name]
-                desired = getattr(desired_vm_config.properties, prop, None)
-                if desired is None:
-                    continue
-                if _wants_a_change(curr_vm, prop, desired):
-                    properties.setdefault(vm_name, {})[prop] = desired
-
-        # List through each standalone VM
-        for vm_name, desired_vm_config in desired_standalone_nubes.items():
-            if vm_name not in managed:
-                # Has not been created yet
-                continue
-            curr_vm = managed[vm_name]
+        for vm_name, desired_vm_config, curr_vm in _managed_vms(
+                managed, desired_nube_clusters, desired_standalone_nubes):
             desired = getattr(desired_vm_config.properties, prop, None)
             if desired is None:
                 continue
             if _wants_a_change(curr_vm, prop, desired):
                 properties.setdefault(vm_name, {})[prop] = desired
 
-    # Set netvm
-    for desired_template_name, desired_nube_cluster_config in desired_nube_clusters.items():
-        # List through the app VMs and the template VM of the cluster
-        for vm_name, desired_vm_config in itertools.chain(
-            desired_nube_cluster_config.app_vms.items(),
-            [(desired_template_name, desired_nube_cluster_config.template)]
-        ):
-            if vm_name not in managed:
-                # Has not been created yet
-                continue
-            desired_netvm = desired_vm_config.properties.netvm
-            curr_vm = managed[vm_name]
-            if _wants_a_change(curr_vm, "netvm", desired_netvm):
-                properties.setdefault(vm_name, {})["netvm"] = desired_netvm
-
-    for vm_name, desired_vm_config in desired_standalone_nubes.items():
-        if vm_name not in managed:
-            # Has not been created yet
-            continue
-        desired_netvm = desired_vm_config.properties.netvm
-        curr_vm = managed[vm_name]
-        if _wants_a_change(curr_vm, "netvm", desired_netvm):
-            properties.setdefault(vm_name, {})["netvm"] = desired_netvm
-
-    delete_on_removal = {}
     # Set delete_on_removal
-    for desired_template_name, desired_nube_cluster_config in desired_nube_clusters.items():
-        # List through the app VMs and the template VM of the cluster
-        for vm_name, desired_vm_config in itertools.chain(
-            desired_nube_cluster_config.app_vms.items(),
-            [(desired_template_name, desired_nube_cluster_config.template)]
-        ):
-            if vm_name not in managed:
-                # Has not been created yet
-                continue
-            if desired_vm_config.delete_on_removal and not should_delete_on_removal(vm_name):
-                delete_on_removal[vm_name] = True
-            elif not desired_vm_config.delete_on_removal and should_delete_on_removal(vm_name):
-                delete_on_removal[vm_name] = False
-
-    for vm_name, desired_vm_config in desired_standalone_nubes.items():
-        if vm_name not in managed:
-            # Has not been created yet
-            continue
-        if desired_vm_config.delete_on_removal and not should_delete_on_removal(vm_name):
-            delete_on_removal[vm_name] = True
-        elif not desired_vm_config.delete_on_removal and should_delete_on_removal(vm_name):
-            delete_on_removal[vm_name] = False
+    delete_on_removal = {}
+    for vm_name, desired_vm_config, _ in _managed_vms(
+            managed, desired_nube_clusters, desired_standalone_nubes):
+        if desired_vm_config.delete_on_removal != should_delete_on_removal(vm_name):
+            delete_on_removal[vm_name] = desired_vm_config.delete_on_removal
 
     return ReconcileDiff(app_vms_templates, properties, delete_on_removal)
 
 
-def _declared_vms(config: QixosConfig):
-    """Every VM this config declares, whatever its class.
-    """
-    for tmpl_name, cluster_conf in config.nube_clusters.items():
+def _declared_vms(
+        clusters: dict[TemplateVmName, NubeClusterConfig],
+        standalones: dict[VmName, StandaloneVMConfig],
+) -> Iterator[tuple[VmName, VmConfigMixin]]:
+    """Every VM these declare, whatever its class."""
+    for tmpl_name, cluster_conf in clusters.items():
         yield from cluster_conf.app_vms.items()
         yield tmpl_name, cluster_conf.template
-    yield from config.standalone_nubes.items()
+    yield from standalones.items()
+
+
+def _managed_vms(
+        managed: dict[VmName, CurrentVM],
+        clusters: dict[TemplateVmName, NubeClusterConfig],
+        standalones: dict[VmName, StandaloneVMConfig],
+) -> Iterator[tuple[VmName, VmConfigMixin, CurrentVM]]:
+    """Declared VMs that exist, paired with the qube as it stands.
+
+    One that is absent has not been created yet, so there is nothing to compare against.
+    """
+    for vm_name, desired in _declared_vms(clusters, standalones):
+        if vm_name in managed:
+            yield vm_name, desired, managed[vm_name]
 
 
 def _wants_a_change(curr_vm: QubesVM, prop: str, desired: PropertyValue) -> bool:
@@ -255,7 +203,7 @@ def validate(app: QubesBase, config: QixosConfig, qixos_config_flake: str):
     # defined later in the config.
     provides_network = {}
     template_for_dispvms = {}
-    for vm_name, vm_conf in _declared_vms(config):
+    for vm_name, vm_conf in _declared_vms(config.nube_clusters, config.standalone_nubes):
         provides_network[vm_name] = vm_conf.properties.provides_network
         template_for_dispvms[vm_name] = vm_conf.properties.template_for_dispvms
 
@@ -265,7 +213,7 @@ def validate(app: QubesBase, config: QixosConfig, qixos_config_flake: str):
     # - vm renamed from exists or two VMs rename from the same VM
     vm_names = set()
     renamed_from_vm_names = set()
-    for vm_name, vm_conf in _declared_vms(config):
+    for vm_name, vm_conf in _declared_vms(config.nube_clusters, config.standalone_nubes):
         # Validate each VM appearing only once
         if vm_name in vm_names:
             raise DuplicateVmName(vm_name)
