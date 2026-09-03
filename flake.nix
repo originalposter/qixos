@@ -29,6 +29,24 @@
       mkNubeStandalone = import ./core/qixos-nix-libs/make-nube-template.nix { qixosCore = self; };
     };
 
+    # Core's modules are evaluated against whatever nixpkgs a nube pins, so the releases
+    # construct-qix-core-modules.nix claims to support are checked here rather than
+    # asserted and hoped for. Forcing drvPath evaluates the whole module system without
+    # building any of it, which is where a renamed or removed option surfaces.
+    checks.${system}.coreModulesEvaluate =
+      let
+        nube = self.lib.mkNubeApp {
+          directBuild = { inherit nixpkgs; };
+          modules = [ ];
+        };
+      in
+        # seq forces the derivation to be instantiated, which evaluates the whole module
+        # system, and then returns a derivation that does not reference it. Naming drvPath
+        # in the env instead makes nix build the entire nube.
+        builtins.seq
+          nube.nixosConfigurations.default.config.system.build.toplevel.drvPath
+          (pkgs.runCommand "core-modules-evaluate" { } "touch $out");
+
     # Everything needed to run the qixos-rebuild test suite and its linter by hand.
     # `nix develop -c pytest core/qixos-rebuild/tests -v` runs them against the working
     # tree, with no rebuild and no git step, which `nix build .#qixos-rebuild` needs.
