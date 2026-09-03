@@ -7,7 +7,7 @@ import qubesadmin
 from .config import eval_config
 from .apply import apply
 from .switch import switch_templates
-from .errors import ConfigError, DuplicateVmName, NixError, NoBaseTemplateError, NoNetVmError, QixosSwitchError, QubesError, RenameError, LocalFlakeError
+from .errors import ConfigError, DuplicateVmName, NixError, NoBaseTemplateError, NoDispVmTemplateError, NoNetVmError, QixosSwitchError, QubesError, RenameError, LocalFlakeError
 from .qrexec.protocol import OomKillerError
 from .state import get_managed_vms, diff, validate
 
@@ -146,6 +146,8 @@ def main():
     except NoBaseTemplateError as e:
         print(e, file=sys.stderr)
     except NoNetVmError as e:
+        print(e, file=sys.stderr)
+    except NoDispVmTemplateError as e:
         print(e, file=sys.stderr)
     except DuplicateVmName as e:
         print(e, file=sys.stderr)

@@ -5,22 +5,55 @@ from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 from pydantic.alias_generators import to_camel
 
 
+# Values a config can give a property in place of a qube name. Both are translated at the
+# write boundary rather than passed through: QUBES_DEFAULT becomes qubesadmin.DEFAULT, and
+# QUBES_NONE becomes None. A qube actually named "default" or "none" is unreferenceable,
+# which is the price of spelling these in the same field as the name.
+QUBES_DEFAULT = "default"
+QUBES_NONE = "none"
+
+
 class CamelModel(BaseModel):
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
 
 class VmProperties(CamelModel):
+    # Order is the order `apply` reconciles them in. Only netvm cares: it is skipped by
+    # the generic loop and handled separately, because setting it can require starting
+    # the qube it names.
     label: str
+    memory: int | None = None
+    maxmem: int | None = None
+    vcpus: int | None = None
+    autostart: bool | None = None
+    include_in_backups: bool | None = None
+    qrexec_timeout: int | None = None
+    shutdown_timeout: int | None = None
     provides_network: bool | None = None
     template_for_dispvms: bool | None = None
-    netvm: str | None = "default"
+    # After template_for_dispvms: qubes refuses a defaultDispvm whose target does not
+    # carry that flag, and the target may be getting it in this same reconcile.
+    default_dispvm: str | None = None
+    # Three states, like every other property here: unset means qixos does not manage it,
+    # QUBES_DEFAULT means the qubes default, QUBES_NONE means no network at all.
+    netvm: str | None = None
 
     @field_validator("netvm", mode="before")
     @classmethod
-    def none_string_to_none(cls, v):
-        if v == "none" or v == "":
-            return None
-        return v
+    def empty_string_means_none(cls, v):
+        return QUBES_NONE if v == "" else v
+
+    @model_validator(mode="after")
+    def memory_fits_under_maxmem(self) -> "VmProperties":
+        # qubes takes either write in any order and only bites at VM start, so the config
+        # is the last place this can be caught with a sentence rather than with a qube
+        # that will not boot. maxmem 0 disables ballooning and is not a ceiling.
+        if self.memory is not None and self.maxmem not in (None, 0) and self.memory > self.maxmem:
+            raise ConfigError(
+                f"memory {self.memory} is above maxmem {self.maxmem}, so this qube "
+                "could not balloon down to its own starting size"
+            )
+        return self
 
 
 class LocalFlake(CamelModel):

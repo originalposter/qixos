@@ -1,8 +1,8 @@
 from qubesadmin.app import QubesBase
 from qubesadmin.vm import QubesVM
 from qubesadmin.exc import QubesDaemonAccessError
-from .config import AppVMConfig, NubeClusterConfig, QixosConfig, StandaloneVMConfig, VmProperties
-from .errors import DuplicateVmName, NoBaseTemplateError, QubesError, RenameError, NoNetVmError
+from .config import QUBES_DEFAULT, QUBES_NONE, AppVMConfig, NubeClusterConfig, QixosConfig, StandaloneVMConfig, VmProperties
+from .errors import DuplicateVmName, NoBaseTemplateError, NoDispVmTemplateError, QubesError, RenameError, NoNetVmError
 from dataclasses import dataclass
 import traceback
 import os
@@ -86,11 +86,9 @@ def calculate_reconcile_diffs(
         desired_nube_clusters: dict[TemplateVmName, NubeClusterConfig],
         desired_standalone_nubes: dict[VmName, StandaloneVMConfig]
 ) -> ReconcileDiff:
-    # FIXME: If a VM is not found in managed we skip it with the assumption that
-    # the reason we don't find it is because it has not yet been created.
-    # We should make sure this is actually the reasonable assumption and handling of this case
-    # we should also make sure the properties are set in the case of a created VM
-    # we should apply DRY to setting properties.
+    # A VM not in `managed` does not exist yet, so there is nothing to compare against and
+    # nothing to reconcile. `apply` calls this a second time after creating VMs, with
+    # `managed` re-read, which is what gets a new VM its properties on the same run.
 
     # Set template for app VMs
     app_vms_templates = {}
@@ -128,9 +126,8 @@ def calculate_reconcile_diffs(
                 desired = getattr(desired_vm_config.properties, prop, None)
                 if desired is None:
                     continue
-                actual = getattr(curr_vm, prop, None)
-                if str(actual) != str(desired):
-                    properties[vm_name] = {prop: desired}
+                if _wants_a_change(curr_vm, prop, desired):
+                    properties.setdefault(vm_name, {})[prop] = desired
 
         # List through each standalone VM
         for vm_name, desired_vm_config in desired_standalone_nubes.items():
@@ -141,9 +138,8 @@ def calculate_reconcile_diffs(
             desired = getattr(desired_vm_config.properties, prop, None)
             if desired is None:
                 continue
-            actual = getattr(curr_vm, prop, None)
-            if str(actual) != str(desired):
-                properties[vm_name] = {prop: desired}
+            if _wants_a_change(curr_vm, prop, desired):
+                properties.setdefault(vm_name, {})[prop] = desired
 
     # Set netvm
     for desired_template_name, desired_nube_cluster_config in desired_nube_clusters.items():
@@ -157,14 +153,8 @@ def calculate_reconcile_diffs(
                 continue
             desired_netvm = desired_vm_config.properties.netvm
             curr_vm = managed[vm_name]
-            curr_netvm = curr_vm.netvm
-
-            # Hardcoding default template netvm to be None for the purposes of
-            # checking if assignment is warranted and for printing. Should be fine.
-            default_netvm = None if curr_vm.klass == "TemplateVM" else app.default_netvm
-            # If desired is different from current and they are not both their default values
-            if curr_netvm != desired_netvm and (desired_netvm != "default" or curr_netvm != default_netvm):
-                properties[vm_name] = {"netvm": desired_netvm}
+            if _wants_a_change(curr_vm, "netvm", desired_netvm):
+                properties.setdefault(vm_name, {})["netvm"] = desired_netvm
 
     for vm_name, desired_vm_config in desired_standalone_nubes.items():
         if vm_name not in managed:
@@ -172,14 +162,8 @@ def calculate_reconcile_diffs(
             continue
         desired_netvm = desired_vm_config.properties.netvm
         curr_vm = managed[vm_name]
-        curr_netvm = curr_vm.netvm
-
-        # Hardcoding default template netvm to be None for the purposes of
-        # checking if assignment is warranted and for printing. Should be fine.
-        default_netvm = app.default_netvm
-        # If desired is different from current and they are not both their default values
-        if curr_netvm != desired_netvm and (desired_netvm != "default" or curr_netvm != default_netvm):
-            properties[vm_name] = {"netvm": desired_netvm}
+        if _wants_a_change(curr_vm, "netvm", desired_netvm):
+            properties.setdefault(vm_name, {})["netvm"] = desired_netvm
 
     delete_on_removal = {}
     # Set delete_on_removal
@@ -209,6 +193,54 @@ def calculate_reconcile_diffs(
     return ReconcileDiff(app_vms_templates, properties, delete_on_removal)
 
 
+def _declared_vms(config: QixosConfig):
+    """Every VM this config declares, whatever its class.
+    """
+    for tmpl_name, cluster_conf in config.nube_clusters.items():
+        yield from cluster_conf.app_vms.items()
+        yield tmpl_name, cluster_conf.template
+    yield from config.standalone_nubes.items()
+
+
+def _wants_a_change(curr_vm: QubesVM, prop: str, desired: PropertyValue) -> bool:
+    """Whether `prop` on this VM is not already what the config asks for.
+
+    `"default"` asks for the qubes default, which is a state rather than a value: a qube
+    pinned to a name that currently equals the default reads the same as one inheriting
+    it, and only starts differing when the default later moves. The admin API reports
+    which it is, in the same property.Get the value itself comes from.
+    """
+    if desired is None:
+        # Not managed by this config. The generic loop skips these before calling, but
+        # netvm has its own pass and reaches here.
+        return False
+    if desired == QUBES_DEFAULT:
+        return not curr_vm.property_is_default(prop)
+    if desired == QUBES_NONE:
+        return getattr(curr_vm, prop, None) is not None
+    return str(getattr(curr_vm, prop, None)) != str(desired)
+
+
+def _refers_to_a_capable_vm(
+        app: QubesBase,
+        referenced: str,
+        capability: str,
+        declared: dict[VmName, bool | None],
+) -> bool:
+    """Whether `referenced` will exist and have `capability` set once this config applies.
+
+    A reference may point at a qube already on the system or at one this config declares,
+    and the config wins: it is what the qube is about to become.
+    """
+    assert app.domains is not None
+    in_config = referenced in declared
+    if in_config:
+        return bool(declared[referenced])
+    if referenced in app.domains:
+        return bool(getattr(app.domains[referenced], capability, False))
+    return False
+
+
 # Raises exceptions if the configuration is found to be invalid
 def validate(app: QubesBase, config: QixosConfig, qixos_config_flake: str):
     # TODO: Validate that if local flake urls are ever used then `qixos_config_flake` points to a local url
@@ -222,13 +254,10 @@ def validate(app: QubesBase, config: QixosConfig, qixos_config_flake: str):
     # We need to do 2 passes because a former VM might reference a netvm
     # defined later in the config.
     provides_network = {}
-    for tmpl_name, cluster_conf in config.nube_clusters.items():
-        # Iterate through both template and app VMs
-        for vm_name, vm_conf in itertools.chain(
-            cluster_conf.app_vms.items(),
-            [(tmpl_name, cluster_conf.template)]
-        ):
-            provides_network[vm_name] = vm_conf.properties.provides_network
+    template_for_dispvms = {}
+    for vm_name, vm_conf in _declared_vms(config):
+        provides_network[vm_name] = vm_conf.properties.provides_network
+        template_for_dispvms[vm_name] = vm_conf.properties.template_for_dispvms
 
     # Validate that
     # - there are not multiple of the same VM name
@@ -236,48 +265,42 @@ def validate(app: QubesBase, config: QixosConfig, qixos_config_flake: str):
     # - vm renamed from exists or two VMs rename from the same VM
     vm_names = set()
     renamed_from_vm_names = set()
-    for tmpl_name, cluster_conf in config.nube_clusters.items():
-        # Iterate through both template and app VMs
-        for vm_name, vm_conf in itertools.chain(
-            cluster_conf.app_vms.items(),
-            [(tmpl_name, cluster_conf.template)]
-        ):
-            # Validate each VM appearing only once
-            if vm_name in vm_names:
-                raise DuplicateVmName(vm_name)
-            vm_names.add(vm_name)
+    for vm_name, vm_conf in _declared_vms(config):
+        # Validate each VM appearing only once
+        if vm_name in vm_names:
+            raise DuplicateVmName(vm_name)
+        vm_names.add(vm_name)
 
-            # Validate netvms
-            # - make sure the network VM exists
-            # - the netvm will have the provides_network property
-            vm_netvm = vm_conf.properties.netvm
-            # the netvm is fine if it's either none or default
-            if vm_netvm not in (None, "default"):
-                in_qubes = vm_netvm in app.domains
-                in_config = vm_netvm in provides_network
-                if not in_qubes and not in_config:
-                    # the netvm is not in our config nor in the system
-                    raise NoNetVmError(vm_netvm, vm_name)
-                if not in_config and in_qubes and not app.domains[vm_netvm].provides_network:
-                    # the netvm is in the system and not in our config but will not provide network
-                    raise NoNetVmError(vm_netvm, vm_name)
-                if in_config and not provides_network[vm_netvm]:
-                    # the netvm is in our config but will not provide network
-                    raise NoNetVmError(vm_netvm, vm_name)
+        # Validate netvms
+        # - make sure the network VM exists
+        # - the netvm will have the provides_network property
+        vm_netvm = vm_conf.properties.netvm
+        # only a name is a reference: None is unmanaged, and the two sentinels
+        # name no qube
+        if vm_netvm not in (None, QUBES_DEFAULT, QUBES_NONE):
+            if not _refers_to_a_capable_vm(app, vm_netvm, "provides_network", provides_network):
+                raise NoNetVmError(vm_netvm, vm_name)
 
-            # Validate rename logic
-            vm_rename_from = vm_conf.rename_from
-            if vm_rename_from is not None:
-                if vm_rename_from == vm_name:
-                    raise RenameError.rename_to_itself(vm_name)
+        # Validate defaultDispvm the same way: it must exist and be willing to be a
+        # disposable template.
+        vm_dispvm = vm_conf.properties.default_dispvm
+        if vm_dispvm is not None:
+            if not _refers_to_a_capable_vm(app, vm_dispvm, "template_for_dispvms", template_for_dispvms):
+                raise NoDispVmTemplateError(vm_dispvm, vm_name)
 
-                if vm_rename_from not in app.domains:
-                    raise RenameError.src_missing(vm_rename_from, vm_name)
+        # Validate rename logic
+        vm_rename_from = vm_conf.rename_from
+        if vm_rename_from is not None:
+            if vm_rename_from == vm_name:
+                raise RenameError.rename_to_itself(vm_name)
 
-                if vm_rename_from in renamed_from_vm_names:
-                    raise RenameError.duplicate_renames(vm_rename_from)
+            if vm_rename_from not in app.domains:
+                raise RenameError.src_missing(vm_rename_from, vm_name)
 
-                renamed_from_vm_names.add(vm_rename_from)
+            if vm_rename_from in renamed_from_vm_names:
+                raise RenameError.duplicate_renames(vm_rename_from)
+
+            renamed_from_vm_names.add(vm_rename_from)
 
 
 def diff(app: QubesBase, config: QixosConfig, managed: dict[str, QubesVM]) -> VmChanges:
