@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 import subprocess
 from .errors import ConfigError, NixError
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
@@ -60,6 +61,49 @@ class VmProperties(CamelModel):
         return self
 
 
+_SIZE_UNITS = {
+    "kib": 1024, "mib": 1024 ** 2, "gib": 1024 ** 3, "tib": 1024 ** 4,
+    "kb": 1000, "mb": 1000 ** 2, "gb": 1000 ** 3, "tb": 1000 ** 4,
+}
+
+_SIZE = re.compile(r"^\s*(\d+(?:\.\d+)?)\s*([a-zA-Z]+)\s*$")
+
+
+def _parse_size(v: object) -> int | None:
+    """Bytes from a size like "20 GiB".
+
+    A number is refused rather than read as bytes, whether the config writes it as one or
+    quotes it. Nobody sizing a disk means bytes, so the one config that would be taken
+    literally is a typo for something a billion times smaller than it looks.
+
+    None is the volume being unmanaged, which is not this function's business.
+    """
+    if v is None:
+        return None
+    match = _SIZE.match(v) if isinstance(v, str) else None
+    if match is None or match.group(2).lower() not in _SIZE_UNITS:
+        raise ConfigError(
+            f"could not read {v!r} as a size. Write a number and a unit, like "
+            f"'20 GiB', using one of: {', '.join(sorted(_SIZE_UNITS))}"
+        )
+    return int(float(match.group(1)) * _SIZE_UNITS[match.group(2).lower()])
+
+
+class Volumes(CamelModel):
+    """Sizes qixos keeps a VM's volumes at or above.
+
+    A volume left unset is not managed. Both are floors rather than exact sizes: qubes
+    rounds an allocation up to the pool's own granularity, and only growth is supported
+    anyway.
+    """
+    # An AppVM's root is a snapshot of its template's, which qubes will not resize, so
+    # AppVMConfig refuses this below and a cluster's root size is the template's.
+    root: int | None = None
+    private: int | None = None
+
+    _to_bytes = field_validator("root", "private", mode="before")(_parse_size)
+
+
 class LocalFlake(CamelModel):
     path: Path
     output: str
@@ -77,6 +121,7 @@ class VmConfigMixin(CamelModel):
     delete_on_removal: bool = False
     rename_from: str | None = None
     properties: VmProperties
+    volumes: Volumes = Volumes()
     remote_flake: RemoteFlake | None = None
     local_flake: LocalFlake | None = None
 
@@ -90,7 +135,16 @@ class VmConfigMixin(CamelModel):
 
 
 class AppVMConfig(VmConfigMixin):
-    pass
+    @model_validator(mode="after")
+    def no_root_volume(self) -> "AppVMConfig":
+        # Refused rather than ignored: qubes rejects the resize, and a line that reads
+        # like it sets the root size while doing nothing is worse than an error.
+        if self.volumes.root is not None:
+            raise ConfigError(
+                "an AppVM's root volume is a snapshot of its template's and cannot be "
+                "resized. Put the root size on the cluster's template instead."
+            )
+        return self
 
 
 class TemplateVMConfig(VmConfigMixin):

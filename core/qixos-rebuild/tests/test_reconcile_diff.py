@@ -19,13 +19,20 @@ from qixos_rebuild.config import (
 )
 
 
-def vm(is_default=True, **attrs):
+GIB = 1024 ** 3
+
+
+def vm(is_default=True, root=GIB, private=GIB, **attrs):
     """A stand-in for a QubesVM, with defaults that match nothing the tests ask for."""
     defaults = dict(
         klass="AppVM", template="tmpl", netvm="sys-net",
         label="red", memory=400, maxmem=4000, vcpus=2, autostart=False,
         include_in_backups=True, qrexec_timeout=60, shutdown_timeout=60,
         provides_network=False, template_for_dispvms=False, default_dispvm=None,
+        volumes={
+            "root": SimpleNamespace(size=root),
+            "private": SimpleNamespace(size=private),
+        },
     )
     stand_in = SimpleNamespace(**{**defaults, **attrs})
     # Whether a property is unset or pinned. Overridden by tests about "default".
@@ -33,12 +40,13 @@ def vm(is_default=True, **attrs):
     return stand_in
 
 
-def nube_config(cls=AppVMConfig, delete_on_removal=False, **properties):
-    # deleteOnRemoval sits on the config, not on properties, and VmProperties would drop
-    # it without a word.
+def nube_config(cls=AppVMConfig, delete_on_removal=False, volumes=None, **properties):
+    # deleteOnRemoval and volumes sit on the config, not on properties, and VmProperties
+    # would drop them without a word.
     return cls(
         properties=VmProperties(**{"label": "red", **properties}),
         deleteOnRemoval=delete_on_removal,
+        volumes=volumes or {},
         remoteFlake={"url": "github:example/nube", "output": "qixosAppConfigurations.x"},
     )
 
@@ -230,3 +238,59 @@ def test_delete_on_removal_is_reported_when_it_differs(monkeypatch):
     turning_off = nube_config(delete_on_removal=False)
     assert reconcile({"nube": vm()}, {"nube": turning_off}).delete_on_removal == {"nube": False}
     assert reconcile({"nube": vm()}, {"nube": turning_on}).delete_on_removal == {}
+
+
+def test_a_volume_below_the_config_is_grown():
+    diff = reconcile(
+        {"nube": vm(private=GIB)},
+        {"nube": nube_config(volumes={"private": "3 GiB"})},
+    )
+
+    assert diff.volumes == {"nube": {"private": 3 * GIB}}
+
+
+def test_an_unmanaged_volume_is_not_touched():
+    diff = reconcile(
+        {"nube": vm(root=GIB, private=GIB)},
+        {"nube": nube_config(volumes={"private": "3 GiB"})},
+    )
+
+    assert diff.volumes["nube"] == {"private": 3 * GIB}
+
+
+def test_a_volume_above_the_config_is_not_shrunk():
+    """A declared size is a floor. Reading a larger volume as a shrink request would not
+    survive a second apply, since qubes rounds an allocation up to its pool's extent size
+    and hands back a volume bigger than the number that asked for it.
+    """
+    diff = reconcile(
+        {"nube": vm(private=8 * GIB)},
+        {"nube": nube_config(volumes={"private": "3 GiB"})},
+    )
+
+    assert diff.volumes == {}
+
+
+def test_a_template_grows_its_root():
+    """The only way a cluster's AppVMs get a bigger root, since theirs is a snapshot."""
+    diff = state.calculate_reconcile_diffs(
+        SimpleNamespace(default_netvm="sys-net"),
+        {"tmpl": vm(klass="TemplateVM", root=GIB)},
+        {"tmpl": NubeClusterConfig(
+            appVms={},
+            template=nube_config(TemplateVMConfig, volumes={"root": "20 GiB"}),
+        )},
+        {},
+    )
+
+    assert diff.volumes == {"tmpl": {"root": 20 * GIB}}
+
+
+def test_a_standalone_grows_too():
+    diff = reconcile(
+        {"alone": vm(klass="StandaloneVM", root=GIB)},
+        {},
+        {"alone": nube_config(StandaloneVMConfig, volumes={"root": "20 GiB"})},
+    )
+
+    assert diff.volumes == {"alone": {"root": 20 * GIB}}
