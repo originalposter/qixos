@@ -71,6 +71,15 @@ in
         # ensure qvm-console-dispvm is logged in
         services.getty.autologinUser = "${cfg.username}";
 
+        # A nube boots at its `memory` allocation and qmemman balloons it up afterwards.
+        # The kernel derives threads-max from the memory present at init and systemd takes
+        # DefaultTasksMax as 15% of that, both once and neither recomputed, so a nube that
+        # ends up with gigabytes still caps its user units at a few hundred tasks. Apps
+        # launched through the qrexec fork server are user units, and a browser exceeds
+        # that across its content processes: clone() returns EAGAIN and thread creation
+        # fails somewhere that does not check for it.
+        systemd.user.settings.Manager.DefaultTasksMax = "infinity";
+
         fileSystems = {
           "/" = {
             device = "/dev/mapper/dmroot";
