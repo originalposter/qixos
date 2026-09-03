@@ -227,17 +227,24 @@ You can use your own configuration for a qixos template or you can use mine (op 
 I'll illustrate with my own.
 Inside `qixos-admin-base-template`:
 ```
-sudo nixos-rebuild boot --flake "git+https://github.com/originalposter/qixos-community?ref=master&dir=users/op/nubes/templates/basic"#default
+sudo su
+nixos-rebuild boot --flake "git+https://github.com/originalposter/qixos-community?ref=master&dir=users/op/nubes/templates/basic"#default
 ```
 
 Then shutdown the template
 
 ### Step 11
 Create the `qixos-admin` VM from `qixos-admin-base-template`.
-In dom0:
+In `dom0`:
 ```
 qvm-create qixos-admin -t qixos-admin-base-template --label black --standalone
 ```
+
+In `qixos-admin`:
+```
+sudo nixos-rebuild boot --flake "git+https://github.com/originalposter/qixos-community?ref=master&dir=users/op/nubes/standalones/qixos-admin"#default
+```
+Then shut down `qixos-admin`
 
 ### Step 12
 SECURITY CRITICAL - MAKE SURE YOU UNDERSTAND THIS
