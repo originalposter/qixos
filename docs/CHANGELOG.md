@@ -54,6 +54,26 @@ The switch logs to the template's journal and to `/var/qixos/switch.log` instead
 - A nube with two properties to change gets both. Only one was applied, and which one
   depended on field order.
 
+### Nube disk sizes are declarative
+A nube can now say how big its volumes should be, in a `volumes` block next to
+`properties`:
+
+```nix
+volumes = {
+  root = "20 GiB";
+  private = "3 GiB";
+};
+```
+
+`apply` grows a volume that is below the declared size. Sizes are floors, so a volume
+already at or above one is left alone, and shrinking is not supported. `root` belongs to
+templates and standalones; an AppVM's root is a snapshot of its template's, which qubes
+will not resize.
+
+Growing the volume of a running nube also grows the filesystem on it now. The
+`qubes.ResizeDisk` endpoint dom0 calls to do that shipped with unresolved paths and
+failed on any nube, leaving the growth stuck at the block device until the next boot.
+
 ### Host ssh keys no longer stored in /etc/ssh
 Fixed an issue where the default `host_*` ssh keys were stored in `/etc/ssh/`.
 

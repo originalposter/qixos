@@ -1,7 +1,9 @@
+import sys
+
 import qubesadmin
 from qubesadmin.app import QubesBase
 from qubesadmin.vm import QubesVM
-from qubesadmin.exc import QubesVMNotStartedError
+from qubesadmin.exc import QubesException, QubesVMNotStartedError
 from . import state
 from .state import ReconcileDiff, mark_delete_on_removal, get_managed_vms, validate
 from .config import QUBES_DEFAULT, QUBES_NONE, QixosConfig, NubeClusterConfig, AppVMConfig, StandaloneVMConfig, VmProperties
@@ -177,6 +179,19 @@ def reconcile_vms(app: QubesBase, reconcile_diff: ReconcileDiff):
     for vm_name, delete_on_removal in reconcile_diff.delete_on_removal.items():
         print(f"  '{vm_name}': delete on removal {not delete_on_removal} -> {delete_on_removal}")
         mark_delete_on_removal(vm_name, delete_on_removal)
+
+    # Grow volumes
+    for vm_name, volumes in reconcile_diff.volumes.items():
+        for volume, desired in volumes.items():
+            curr_volume = app.domains[vm_name].volumes[volume]
+            print(f"  '{vm_name}': {volume} volume {curr_volume.size} -> {desired} bytes")
+            try:
+                curr_volume.resize(desired)
+            except QubesException as e:
+                # Reported rather than raised: a resize dom0 refuses says nothing about
+                # the other VMs in this run, and on a running qube it can fail after the
+                # block device already grew. The next apply sees whatever did land.
+                print(f"  '{vm_name}': could not resize {volume}: {e}", file=sys.stderr)
 
 
 def apply(app: QubesBase, config: QixosConfig, base_template: str, qixos_config_flake: str):

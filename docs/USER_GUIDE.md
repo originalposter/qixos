@@ -9,6 +9,48 @@ Since normal nixos configurations are also divided up into modules we are able t
 The outer configuration is in a QixOS specific format and is consumed by the Qix tool `qixos-rebuild`.
 
 
+## Disk sizes
+A nube's volumes are declared in a `volumes` block next to its `properties`, using the
+names qubes gives them: `root` holds the system, `private` holds `/home` and `/rw`.
+
+```nix
+nubeClusters."general-nube" = {
+  template = {
+    properties.label = "black";
+    volumes = {
+      root = "20 GiB";
+      private = "3 GiB";
+    };
+  };
+
+  appVms."dev-nube" = {
+    properties = {
+      label = "orange";
+      netvm = "sys-net";
+    };
+    volumes.private = "10 GiB";
+  };
+};
+```
+
+A size is a floor rather than an exact size. `apply` grows a volume that is below it and
+leaves one that is already bigger, so a volume you grew by hand is not shrunk back, and
+qubes rounding an allocation up to its pool's granularity does not make the next `apply`
+disagree with the last one. Shrinking is not supported at all; to reclaim space, resize
+the volume by hand.
+
+Write a number and a unit. `GiB`, `MiB`, `KiB` and `TiB` are powers of 1024, `GB`, `MB`,
+`KB` and `TB` are powers of 1000. A bare number is refused, since a disk size meant as
+bytes is almost always a typo.
+
+A volume you say nothing about is left alone, so a config need only mention the volumes
+it cares about.
+
+Only templates and standalones can set `root`. An AppVM's root volume is a snapshot of
+its template's and qubes will not resize it, so a cluster's root size belongs on the
+template, where growing it gives every AppVM in the cluster the same room. An AppVM
+setting `root` is a config error rather than a line that quietly does nothing.
+
 ## Configuring your home directory
 QixOS has no opinion about your home directory and no separate place to configure it.
 If you want [home-manager](https://github.com/nix-community/home-manager) you import it as a nixos module in your inner configuration, exactly as you would on any other nixos machine:

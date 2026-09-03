@@ -99,6 +99,15 @@ def cmd_diff(args, app):
         for vm_name, delete_on_removal in vm_changes.reconcile_diff.delete_on_removal.items():
             print(f"    ~ {vm_name} -> {delete_on_removal}")
 
+    print("  volumes:")
+    if not vm_changes.reconcile_diff.volumes:
+        print("  none")
+    else:
+        for vm_name, volumes in vm_changes.reconcile_diff.volumes.items():
+            print(f"    ~ {vm_name}")
+            for volume, size in volumes.items():
+                print(f"       {volume} -> {size} bytes")
+
 
 def main():
     parser = argparse.ArgumentParser(prog="qixos-rebuild")

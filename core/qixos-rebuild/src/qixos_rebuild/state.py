@@ -15,6 +15,7 @@ type TemplateVmName = str
 type VmName = str
 type PropertyName = str
 type PropertyValue = Any
+type VolumeName = str
 
 
 @dataclass
@@ -23,6 +24,8 @@ class ReconcileDiff:
     app_vms_templates: dict[AppVmName, TemplateVmName]
     properties: dict[VmName, dict[PropertyName, PropertyValue]]
     delete_on_removal: dict[VmName, bool]
+    # Target sizes in bytes, only for volumes that are below what the config asks for
+    volumes: dict[VmName, dict[VolumeName, int]]
 
 
 @dataclass
@@ -122,7 +125,31 @@ def calculate_reconcile_diffs(
         if desired_vm_config.delete_on_removal != should_delete_on_removal(vm_name):
             delete_on_removal[vm_name] = desired_vm_config.delete_on_removal
 
-    return ReconcileDiff(app_vms_templates, properties, delete_on_removal)
+    volumes = _volumes_to_grow(managed, desired_nube_clusters, desired_standalone_nubes)
+
+    return ReconcileDiff(app_vms_templates, properties, delete_on_removal, volumes)
+
+
+def _volumes_to_grow(
+        managed: dict[VmName, CurrentVM],
+        clusters: dict[TemplateVmName, NubeClusterConfig],
+        standalones: dict[VmName, StandaloneVMConfig],
+) -> dict[VmName, dict[VolumeName, int]]:
+    """Volumes the config wants bigger than they are.
+
+    A declared size is a floor, so one already at or above it yields nothing. Treating a
+    larger volume as a shrink request would not survive a second apply: qubes rounds an
+    allocation up to its pool's extent size, so a volume can come back bigger than the
+    number that produced it, and growing one by hand is a thing people do.
+    """
+    to_grow = {}
+    for vm_name, desired_vm_config, curr_vm in _managed_vms(managed, clusters, standalones):
+        for volume, desired in desired_vm_config.volumes.model_dump().items():
+            if desired is None:
+                continue
+            if desired > curr_vm.volumes[volume].size:
+                to_grow.setdefault(vm_name, {})[volume] = desired
+    return to_grow
 
 
 def _declared_vms(
