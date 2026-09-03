@@ -14,10 +14,6 @@ class QixosSwitchError(Exception):
     pass
 
 
-class OomKillerError(Exception):
-    pass
-
-
 class RenameError(Exception):
     def __init__(self, error_msg: str) -> None:
         super().__init__("rename error:", error_msg)

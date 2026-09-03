@@ -34,29 +34,39 @@ class ProtocolJson(BaseModel):
     standalone: bool = False
 
 
+# Exit statuses are 8 bits, so anything at or above 256 is truncated on the way out and
+# arrives as something else. 125, 126 and 128+n are qrexec's and the shell's, so these stay
+# below that. The status is the only thing that crosses from the template, so it has to
+# survive the trip.
+
+# For the catch-all in qixos_switch.main
+class UnknownError(Exception):
+    ERROR_CODE = 10
+
+
 class BreakingProtocolError(Exception):
-    ERROR_CODE = 1000
+    ERROR_CODE = 11
 
 
 class VersionNotSupportedError(Exception):
-    ERROR_CODE = 1001
+    ERROR_CODE = 12
 
 
 class UntarError(Exception):
-    ERROR_CODE = 1002
+    ERROR_CODE = 13
 
 
 class MissingAttributeError(Exception):
-    ERROR_CODE = 1003
+    ERROR_CODE = 14
 
 
 class NixosRebuildError(Exception):
-    ERROR_CODE = 1004
+    ERROR_CODE = 15
 
 
 class MakeGitError(Exception):
-    ERROR_CODE = 1005
+    ERROR_CODE = 16
 
 
 class OomKillerError(Exception):
-    ERROR_CODE = 1006
+    ERROR_CODE = 17
