@@ -19,6 +19,15 @@ in
         description = "qubes-core-agent-linux package as configured by the qubes module options";
         internal = true;
       };
+      allowUnsupportedNixpkgs = mkOption {
+        type = types.bool;
+        default = false;
+        description = ''
+          Build this nube against a nixpkgs release qixos core has not been checked
+          against. The check exists because an option core uses may have been renamed,
+          which fails loudly, or had its default changed, which does not.
+        '';
+      };
       username = mkOption {
         type = types.str;
         description = "the username of the primary account";

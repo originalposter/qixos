@@ -161,6 +161,10 @@ The decision for what nixpkgs version to use can be done in 3 places:
 
 1) seems like the best place to put this since it allows all AppVMs to use the same version and therefore reduces redundancy but also allows users to control which version of nixpkgs that they use by locking it in the templates config.
 
+The cost is that core's modules are evaluated against a nixpkgs core did not choose, and nothing keeps the two in step.
+An option core uses that was renamed fails the build loudly, but one whose default moved does not, and no check can see that.
+So core names the releases it has been checked against in `construct-qix-core-modules.nix` and asserts on `lib.trivial.release`, the qixos root flake's `checks` evaluates the module set against each of them so the list is verified rather than claimed, and a nube that wants an untested release sets `services.qubes.core.allowUnsupportedNixpkgs`.
+
 ## Design decision 7
 The `mkNubeApp` function can take a `directBuild` parameter which accepts a nixpkgs version.
 This let's the returned value from `mkNubeApp` have a `nixosConfigurations.default` field.
