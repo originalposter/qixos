@@ -108,7 +108,14 @@ let
         || echo "WARNING: could not start user default.target for $user"
     }
 
-    QUBE_NAME=$(${pkgs.qubes-core-qubesdb}/bin/qubesdb-read /name)
+    # A DispVM's own name is randomly generated, so it matches no configuration. The one it
+    # should boot belongs to the AppVM it was made from, which is what /qubes-base-template
+    # names for a DispVM, the same key naming the TemplateVM for an AppVM.
+    if [ "$(${pkgs.qubes-core-qubesdb}/bin/qubesdb-read /type)" = "DispVM" ]; then
+      QUBE_NAME=$(${pkgs.qubes-core-qubesdb}/bin/qubesdb-read /qubes-base-template || true)
+    else
+      QUBE_NAME=$(${pkgs.qubes-core-qubesdb}/bin/qubesdb-read /name)
+    fi
     case "$QUBE_NAME" in
       ${builtins.concatStringsSep "\n      " (
           map (name: ''

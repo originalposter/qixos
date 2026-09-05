@@ -9,6 +9,8 @@ import pytest
 
 from qixos_rebuild import state
 from qixos_rebuild.config import (
+    QUBES_DEFAULT,
+    QUBES_NONE,
     AppVMConfig,
     StandaloneVMConfig,
     NubeClusterConfig,
@@ -73,6 +75,16 @@ def test_a_dispvm_template_without_the_flag_is_refused():
             vault=nube_config(templateForDispvms=False),
             user=nube_config(defaultDispvm="vault"),
         ))
+
+
+def test_a_default_dispvm_of_default_names_no_qube_to_check():
+    """QUBES_DEFAULT asks for whatever dom0 has as the default, resolved there not here."""
+    validate(app(), config(user=nube_config(defaultDispvm=QUBES_DEFAULT)))
+
+
+def test_a_default_dispvm_of_none_names_no_qube_to_check():
+    """QUBES_NONE asks for no disposable base at all, so there is nothing to resolve."""
+    validate(app(), config(user=nube_config(defaultDispvm=QUBES_NONE)))
 
 
 def test_an_undeclared_default_dispvm_is_not_checked():

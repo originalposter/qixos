@@ -42,6 +42,11 @@ Each AppVM has it's own complete nixos configuration which is built and then sym
 The AppVM will on boot run a systemd job called `qixos-appvm-switch.service` which looks up the configuration for that AppVMs name and switches to it with `nixos-rebuild test --flake /run/qixos/activation/<VM name>/nixos`.
 This will set up the AppVMs configuration.
 
+A DisposableVM boots the same template root and runs the same job, but its own name is randomly generated and matches no configuration.
+It is looked up under the name of the AppVM it was made from instead, which QubesDB reports to a disposable as `/qubes-base-template`.
+A disposable therefore runs the configuration of the nube it was disposed from, and that holds for named disposables too, since a disposable's own name is never consulted.
+There is no way to give a disposable a configuration distinct from that nube's.
+
 ## Isolation between QixOS systems and the Qubes system
 The qixos admin VM is isolated from the rest of the Qubes system in the same way normal Qubes are isolated from each other.
 This means you can install QixOS without compromising your larger Qubes system, you can mix and match qubes and nubes.
