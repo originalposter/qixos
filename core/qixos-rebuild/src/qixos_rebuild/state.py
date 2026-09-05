@@ -259,7 +259,7 @@ def validate(app: QubesBase, config: QixosConfig, qixos_config_flake: str):
         # Validate defaultDispvm the same way: it must exist and be willing to be a
         # disposable template.
         vm_dispvm = vm_conf.properties.default_dispvm
-        if vm_dispvm is not None:
+        if vm_dispvm not in (None, QUBES_DEFAULT, QUBES_NONE):
             if not _refers_to_a_capable_vm(app, vm_dispvm, "template_for_dispvms", template_for_dispvms):
                 raise NoDispVmTemplateError(vm_dispvm, vm_name)
 

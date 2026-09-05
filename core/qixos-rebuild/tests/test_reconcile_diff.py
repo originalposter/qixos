@@ -198,6 +198,13 @@ def test_default_dispvm_can_ask_for_the_default_too():
     assert diff.properties["nube"] == {"default_dispvm": QUBES_DEFAULT}
 
 
+def test_default_dispvm_none_clears_the_disposable_base():
+    diff = reconcile({"nube": vm(default_dispvm="some-dvm")},
+                     {"nube": nube_config(defaultDispvm=QUBES_NONE)})
+
+    assert diff.properties["nube"] == {"default_dispvm": QUBES_NONE}
+
+
 def test_netvm_omitted_leaves_the_network_alone():
     """Saying nothing about netvm is distinct from asking for QUBES_NONE."""
     diff = reconcile({"nube": vm(netvm="sys-net", is_default=False)}, {"nube": nube_config()})

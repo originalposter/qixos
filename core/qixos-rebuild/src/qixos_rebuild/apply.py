@@ -11,6 +11,19 @@ from .config import QUBES_DEFAULT, QUBES_NONE, QixosConfig, NubeClusterConfig, A
 
 # Internal function for setting the netvm property.
 # Needs to deal with default values and starting up stopped network VMs
+def _qubes_value(desired: str):
+    """Translate a config sentinel into what the admin API wants for it.
+
+    QUBES_DEFAULT and QUBES_NONE are spelled in the same field as a qube name, so the
+    translation belongs at the write boundary rather than in the parsed config.
+    """
+    if desired == QUBES_NONE:
+        return None
+    if desired == QUBES_DEFAULT:
+        return qubesadmin.DEFAULT
+    return desired
+
+
 def _set_netvm(app: QubesBase, desired_netvm: str | None, curr_vm: QubesVM):
     # None is a config that says nothing about netvm, so there is nothing to do. Whether
     # a change is warranted is decided by the diff; this only carries it out.
@@ -18,12 +31,7 @@ def _set_netvm(app: QubesBase, desired_netvm: str | None, curr_vm: QubesVM):
         return
 
     old_netvm = curr_vm.netvm
-    if desired_netvm == QUBES_NONE:
-        assignment = None
-    elif desired_netvm == QUBES_DEFAULT:
-        assignment = qubesadmin.DEFAULT
-    else:
-        assignment = desired_netvm
+    assignment = _qubes_value(desired_netvm)
 
     try:
         curr_vm.netvm = assignment
@@ -161,11 +169,9 @@ def reconcile_vms(app: QubesBase, reconcile_diff: ReconcileDiff):
                 actual = getattr(curr_vm, prop, None)
                 desired = update_prop[prop]
                 print(f"  '{vm_name}': {prop} {actual} -> {desired}")
-                # "default" asks for the qubes default rather than for a qube of that
-                # name. Only string properties can carry it: an int field rejects it at
-                # parse time.
-                setattr(curr_vm, prop,
-                        qubesadmin.DEFAULT if desired == QUBES_DEFAULT else desired)
+                # Only string properties can carry a sentinel: an int field rejects it
+                # at parse time.
+                setattr(curr_vm, prop, _qubes_value(desired))
 
     # Set netvm
     for vm_name, update_prop in reconcile_diff.properties.items():
