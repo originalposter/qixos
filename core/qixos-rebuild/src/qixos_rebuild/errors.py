@@ -51,6 +51,25 @@ class DuplicateVmName(Exception):
         super().__init__(f"found duplicate vms with the name '{duplicate_vm_name}'. Make sure only 1 VM has this name in the configuration.")
 
 
+class VmStillReferencedError(Exception):
+    def __init__(self, vm_name: str, references: list[tuple[str, str]]) -> None:
+        named = ", ".join(f"'{who}' as its {prop}" for who, prop in sorted(references))
+        super().__init__(
+            f"'{vm_name}' is still named by {named}, and this config keeps {'them' if len(references) > 1 else 'it'}, "
+            "so qubes would refuse to remove it. Point them elsewhere, or remove them in "
+            "the same apply."
+        )
+
+
+class GlobalDefaultVmError(Exception):
+    def __init__(self, vm_name: str, prop: str, inheritors: int) -> None:
+        super().__init__(
+            f"'{vm_name}' is the qubes-wide default {prop}, which {inheritors} managed "
+            "qube(s) inherit, so qubes would refuse to remove it. Change that default in "
+            "dom0 before removing this qube."
+        )
+
+
 # TODO: Should specify which cluster this pertains to
 class LocalFlakeError(Exception):
     def __init__(self, error_msg: str) -> None:
