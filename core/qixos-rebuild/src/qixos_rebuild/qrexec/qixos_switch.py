@@ -263,6 +263,22 @@ def generate_flake(protocol: ProtocolJson):
         f.write(flake)
 
 
+def prefer_as_oom_victim():
+    """Make this process the kernel's first choice if memory runs out.
+
+    Run in the child between fork and exec. A nix build is what consumes the memory here
+    and it is the safe thing to lose: builds are atomic, so a killed one leaves nothing
+    behind. What must survive is this switch, which is the only thing that can report why
+    the build failed. Raising a score needs no privilege, unlike lowering one, and biasing
+    the child up beats biasing the parent down because the setting is inherited.
+
+    Only chooses a victim if the kernel is already out of memory. It does not make one
+    more likely.
+    """
+    with open("/proc/self/oom_score_adj", "w") as adj:
+        adj.write("500")
+
+
 def build_and_switch(update_lockfile: bool, standalone: bool):
     QUBES_HTTP_PROXY_URL = "http://127.0.0.1:8082"
 
@@ -307,6 +323,7 @@ def build_and_switch(update_lockfile: bool, standalone: bool):
             ["nixos-rebuild", "boot", "--flake", f"{CURRENT_FLAKE_DIR}#template"],
             check=True,
             capture_output=True,
+            preexec_fn=prefer_as_oom_victim,
             env={"https_proxy": QUBES_HTTP_PROXY_URL, "all_proxy": QUBES_HTTP_PROXY_URL, **os.environ} if not standalone else None,
 
         )
