@@ -105,21 +105,25 @@ with lib; {
           fi
         '';
 
-        vmexec = pkgs.writeTextFile {
-          name = "qubes-rpc-vmexec";
-          # NOTE: in order to perform updates, qubes `vmupdate` injects a python agent into the vm and then
-          # executes it. the agent then calls our scripts to perform various actions.
-          # we need to ensure the VMExec RPC has the correct PATH to find the dependencies and
-          # our update scripts.
-          text = ''
-            #!${pkgs.stdenv.shell}
+        # NOTE: in order to perform updates, qubes `vmupdate` injects a python agent into the vm and then
+        # executes it. the agent then calls our scripts to perform various actions.
+        # we need to ensure the VMExec RPC has the correct PATH to find the dependencies and
+        # our update scripts.
+        vmexecScript = pkgs.writeScript "qubes-vmexec-rpc" ''
+          #!${pkgs.stdenv.shell}
 
-            export PATH=${lib.makeBinPath (with pkgs; [coreutils gnutar python3 upgradesStatusNotify getPackages nixosRebuildWrapper])}:$PATH
-            exec ${config.services.qubes.core.package.out}/bin/qubes-vmexec "$@"
-          '';
-          executable = true;
-          destination = "/etc/qubes-rpc/qubes.VMExec";
-        };
+          export PATH=${lib.makeBinPath (with pkgs; [coreutils gnutar python3 upgradesStatusNotify getPackages nixosRebuildWrapper])}:$PATH
+          exec ${config.services.qubes.core.package.out}/bin/qubes-vmexec "$@"
+        '';
+
+        vmexec = pkgs.runCommand "qubes-rpc-vmexec" {} ''
+          mkdir -p "$out/etc/qubes-rpc"
+          ln -s ${vmexecScript} "$out/etc/qubes-rpc/qubes.VMExec"
+          # qvm-run asks for this name when running a GUI command in a disposable. Same
+          # program; what makes it a GUI call is the wait-for-session the agent package
+          # ships for it in rpc-config.
+          ln -s qubes.VMExec "$out/etc/qubes-rpc/qubes.VMExecGUI"
+        '';
       in {
         environment.systemPackages = [
           nixosRebuildWrapper

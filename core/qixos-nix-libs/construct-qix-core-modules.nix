@@ -10,9 +10,9 @@ let
     { nixpkgs.overlays = [ qixosCore.overlays.base ]; }
     ({ config, lib, pkgs, ... }:
     let
-      # NOTE: The normal /etc/qubes-rpc path is *NOT* in the QREXEC_SERVICE_PATH variable.
-      # If you want to create qubes remote execution (qrexec) endpoints they should be put in
-      # `services.qubes.qrexec.packages` as packages.
+      # NOTE: qrexec endpoints belong in `services.qubes.qrexec.packages`, as packages
+      # shipping `etc/qubes-rpc/<service>`. Those are merged into /etc/qubes-rpc, along
+      # with any `etc/qubes/rpc-config/<service>` beside them into /etc/qubes/rpc-config.
       #
       # The below script is the script ran on all template VMs when `qixos-rebuild` pings them to switch
       # to a new flake. The qrexec call ought to be made to root (this is controlled in dom0 policy).

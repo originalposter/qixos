@@ -3,8 +3,9 @@ import sys
 import qubesadmin
 from qubesadmin.app import QubesBase
 from qubesadmin.vm import QubesVM
-from qubesadmin.exc import QubesException, QubesVMNotStartedError
+from qubesadmin.exc import QubesException, QubesVMInUseError, QubesVMNotStartedError
 from . import state
+from .errors import QubesError
 from .state import ReconcileDiff, mark_delete_on_removal, get_managed_vms, validate
 from .config import QUBES_DEFAULT, QUBES_NONE, QixosConfig, NubeClusterConfig, AppVMConfig, StandaloneVMConfig, VmProperties
 
@@ -142,9 +143,37 @@ def create_standalone_vm(
 
 
 def delete_vm(app: QubesBase, vm_name: str):
-    print(f"Deleting '{vm_name}'")
     assert app.domains is not None
     del app.domains[vm_name]
+    # After the fact, so a qube deferred for being in use is not announced twice
+    print(f"Deleted '{vm_name}'")
+
+
+def delete_vms(app: QubesBase, vm_names: list[str]):
+    """Delete each qube, going round again for any that were still in use.
+
+    Qubes refuses to remove a qube that another one names, and one apply can be removing
+    both. Which order resolves that depends on which reference it is, so rather than
+    reproducing qubes' rules here, the refusal is the ordering. A pass that deletes
+    nothing means what is left cannot be deleted at all.
+    """
+    remaining = list(vm_names)
+    while remaining:
+        deferred = []
+        refusal = None
+        for vm_name in remaining:
+            try:
+                delete_vm(app, vm_name)
+            except QubesVMInUseError as e:
+                deferred.append(vm_name)
+                refusal = e
+
+        if len(deferred) == len(remaining):
+            raise QubesError(
+                f"could not delete {', '.join(sorted(deferred))}, each still in use by "
+                f"something this apply is keeping: {refusal}"
+            )
+        remaining = deferred
 
 
 def reconcile_vms(app: QubesBase, reconcile_diff: ReconcileDiff):
@@ -217,14 +246,11 @@ def apply(app: QubesBase, config: QixosConfig, base_template: str, qixos_config_
     for standalone_name, standalone_config in vm_changes.standalonevms_to_create.items():
         create_standalone_vm(app, standalone_name, standalone_config, base_template)
 
-    for vm_name in vm_changes.appvms_to_delete.keys():
-        delete_vm(app, vm_name)
-
-    for vm_name in vm_changes.templatevms_to_delete.keys():
-        delete_vm(app, vm_name)
-
-    for vm_name in vm_changes.standalonevms_to_delete.keys():
-        delete_vm(app, vm_name)
+    delete_vms(app, [
+        *vm_changes.appvms_to_delete,
+        *vm_changes.templatevms_to_delete,
+        *vm_changes.standalonevms_to_delete,
+    ])
 
     # Recomputed rather than reusing vm_changes.reconcile_diff, which was calculated
     # before the creates above and therefore skips every VM this run made: those VMs are

@@ -2,7 +2,7 @@ from qubesadmin.app import QubesBase
 from qubesadmin.vm import QubesVM
 from qubesadmin.exc import QubesDaemonAccessError
 from .config import QUBES_DEFAULT, QUBES_NONE, AppVMConfig, NubeClusterConfig, QixosConfig, StandaloneVMConfig, VmConfigMixin, VmProperties
-from .errors import DuplicateVmName, NoBaseTemplateError, NoDispVmTemplateError, QubesError, RenameError, NoNetVmError
+from .errors import GlobalDefaultVmError, VmStillReferencedError, DuplicateVmName, NoBaseTemplateError, NoDispVmTemplateError, QubesError, RenameError, NoNetVmError
 from dataclasses import dataclass
 import traceback
 import os
@@ -175,6 +175,63 @@ def _managed_vms(
     for vm_name, desired in _declared_vms(clusters, standalones):
         if vm_name in managed:
             yield vm_name, desired, managed[vm_name]
+
+
+# Properties that name another qube. Qubes refuses to remove a qube while one of these
+# still points at it, whichever property it is, so they are checked as one set.
+BLOCKING_PROPERTIES = ("netvm", "default_dispvm")
+
+
+def _referenced(curr_vm: CurrentVM, prop: str) -> VmName | None:
+    referenced = getattr(curr_vm, prop, None)
+    return None if referenced is None else str(referenced)
+
+
+def vms_still_referenced(
+        managed: dict[VmName, CurrentVM],
+        to_delete: dict[VmName, CurrentVM],
+) -> dict[VmName, list[tuple[VmName, str]]]:
+    """Qubes about to be deleted that a surviving qube still names, and under which property.
+
+    Only a qube that set the property counts. Reading one of these resolves the qubes
+    default when the qube did not set it, so without that distinction every qube
+    inheriting a default would be reported as naming it.
+    """
+    in_use: dict[VmName, list[tuple[VmName, str]]] = {}
+    for vm_name, curr_vm in managed.items():
+        if vm_name in to_delete:
+            continue
+        for prop in BLOCKING_PROPERTIES:
+            if curr_vm.property_is_default(prop):
+                continue
+            referenced = _referenced(curr_vm, prop)
+            if referenced is not None and referenced in to_delete:
+                in_use.setdefault(referenced, []).append((vm_name, prop))
+    return in_use
+
+
+def global_defaults_being_removed(
+        managed: dict[VmName, CurrentVM],
+        to_delete: dict[VmName, CurrentVM],
+) -> dict[VmName, tuple[str, int]]:
+    """Qubes about to be deleted that a qubes-wide default points at, and how many inherit it.
+
+    A qube that did not set one of these reads back the qubes default for it, so an
+    inheritor is what that default is. Reading it that way needs no admin.property.Get
+    grant, and it is only unavailable when nothing inherits the default, which is exactly
+    when removing the qube breaks nothing here.
+    """
+    defaults: dict[VmName, tuple[str, int]] = {}
+    for curr_vm in managed.values():
+        for prop in BLOCKING_PROPERTIES:
+            if not curr_vm.property_is_default(prop):
+                continue
+            referenced = _referenced(curr_vm, prop)
+            if referenced is None or referenced not in to_delete:
+                continue
+            _, inheritors = defaults.get(referenced, (prop, 0))
+            defaults[referenced] = (prop, inheritors + 1)
+    return defaults
 
 
 def _wants_a_change(curr_vm: QubesVM, prop: str, desired: PropertyValue) -> bool:
@@ -376,12 +433,22 @@ def diff(app: QubesBase, config: QixosConfig, managed: dict[str, QubesVM]) -> Vm
     standalonevms_to_delete = {
         name: vm
         for name, vm in managed.items()
-        if name not in desired_standalone_vms
+        if name not in desired_app_vms
         and name not in desired_template_vms
         and name not in desired_standalone_vms
         and should_delete_on_removal(name)
         and vm.klass == "StandaloneVM"
     }
+
+    to_delete = {
+        **appvms_to_delete,
+        **templatevms_to_delete,
+        **standalonevms_to_delete,
+    }
+    for vm_name, (prop, inheritors) in global_defaults_being_removed(managed, to_delete).items():
+        raise GlobalDefaultVmError(vm_name, prop, inheritors)
+    for vm_name, references in vms_still_referenced(managed, to_delete).items():
+        raise VmStillReferencedError(vm_name, references)
 
     changes = VmChanges(
         vms_to_rename,
