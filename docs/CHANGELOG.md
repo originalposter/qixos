@@ -47,6 +47,41 @@ bytes of its choosing in front of the admin.
 The switch logs to the template's journal and to `/var/qixos/switch.log` instead, and
 `qixos-rebuild` prints that path on every switch.
 
+### Disposable nubes boot their own configuration
+A disposable is named when it starts, so the switch job found no configuration under that
+name, gave up, and left the qube running the template's system. It now looks itself up
+under the nube it was disposed from.
+
+There is no way to give a disposable a configuration distinct from that nube's, and a
+named disposable behaves no differently: its own name is never consulted.
+
+### qrexec endpoints are served from /etc/qubes-rpc
+Services were found through `QREXEC_SERVICE_PATH`, one store path per package, which left
+`/etc/qubes-rpc` empty on every nube. They are now merged into the directory qrexec reads
+by default, and two packages claiming one service name fail the build rather than
+resolving by list order. `services.qubes.qrexec.packages` is unchanged.
+
+`/etc/qubes/rpc-config` is now installed, having been missing entirely. It carries the
+per-service settings qrexec reads beside a service, so nine services a nube already
+implements change behaviour: `qubes.OpenInVM`, `qubes.StartApp`, `qubes.OpenURL`,
+`qubes.SelectFile`, `qubes.SelectDirectory`, `qubes.ShowInTerminal` and
+`qubes.InstallUpdatesGUI` now wait for the GUI session, and `qubes.ConnectTCP` and
+`qubes.UpdatesProxy` no longer have a service descriptor written into their data.
+
+`qubes.VMExecGUI` is restored. It was removed from the agent package along with
+`qubes.VMExec`, which it symlinks to, and never recreated. Without it a GUI command run in
+a disposable started before the session existed and found no `DISPLAY`.
+
+### Removing nubes that name each other
+Qubes refuses to remove a qube another one still points at, through `netvm` or
+`defaultDispvm`. An apply removing both ends now retries until the order works out rather
+than failing on whichever it reached first.
+
+Removing only the qube being pointed at is refused before anything is deleted, since a
+config that cannot be applied should not cost a qube on the way to saying so. Naming a
+qube the qubes-wide default points at is reported separately, because the fix for that one
+is in dom0 rather than in the config.
+
 ### Fixes
 - Protocol error codes no longer exceed 255, so they survive a process exit. The
   out-of-memory report could not previously fire because its code arrived truncated.
