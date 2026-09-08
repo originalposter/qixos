@@ -8,14 +8,14 @@
 }:
 
 stdenv.mkDerivation rec {
-  version = "4.3.30";
+  version = "4.3.34";
   pname = "qubes-core-admin-client";
 
   src = fetchFromGitHub {
     owner = "QubesOS";
     repo = "qubes-core-admin-client";
     rev = "v${version}";
-    hash = "sha256-B3LxCH+sT1ZO9XqTjmFE8jFKF7FcjRhLdbfDrqS7uTo=";
+    hash = "sha256-t1bv1XAPJNVbBbQUq95IybY9hrbJmHXVz70pHt5fmgU=";
   };
 
   nativeBuildInputs = [ makeWrapper python3 ] ++ (with python3Packages; [
