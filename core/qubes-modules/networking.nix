@@ -18,6 +18,17 @@ with lib; {
 
     services.resolved.enable = true;
 
+    # qubes owns this file and nixos must not claim it. `setup-ip` writes the nameservers
+    # from qubesdb into it at boot, deleting whatever symlink it finds there first, and
+    # resolved reads them back out of it as its upstream servers. Declaring it here would
+    # make every activation restore the symlink, which leaves resolved with no upstreams
+    # at all: the qube keeps its addresses and its routes and resolves nothing.
+    #
+    # A reboot is what hides this. `setup-ip` runs after activation at boot, so it wins
+    # there, and its unit is a oneshot that has already exited by the time anyone runs
+    # `nixos-rebuild switch`. Nothing re-applies it afterwards.
+    environment.etc."resolv.conf".enable = false;
+
     systemd.services.qubes-network-uplink = {
       # ensure the service is started on boot, since Install is ignored
       wantedBy = ["multi-user.target"];
