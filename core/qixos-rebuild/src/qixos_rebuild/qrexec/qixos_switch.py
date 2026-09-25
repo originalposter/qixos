@@ -263,6 +263,39 @@ def generate_flake(protocol: ProtocolJson):
         f.write(flake)
 
 
+def prefer_as_oom_victim():
+    """Make this process the kernel's first choice if memory runs out.
+
+    Run in the child between fork and exec. A nix build is what consumes the memory here
+    and it is the safe thing to lose: builds are atomic, so a killed one leaves nothing
+    behind. What must survive is this switch, which is the only thing that can report why
+    the build failed. Raising a score needs no privilege, unlike lowering one, and biasing
+    the child up beats biasing the parent down because the setting is inherited.
+
+    Only chooses a victim if the kernel is already out of memory. It does not make one
+    more likely.
+    """
+    with open("/proc/self/oom_score_adj", "w") as adj:
+        adj.write("500")
+
+
+def oom_kills():
+    """How many processes the kernel has OOM-killed since boot, or None if it will not say.
+
+    The counter is system-wide. On a template mid-switch that is close enough: anything
+    the kernel killed for memory during a build is the same diagnosis and the same fix.
+    """
+    try:
+        with open("/proc/vmstat") as vmstat:
+            for line in vmstat:
+                name, _, count = line.partition(" ")
+                if name == "oom_kill":
+                    return int(count)
+    except (OSError, ValueError):
+        pass
+    return None
+
+
 def build_and_switch(update_lockfile: bool, standalone: bool):
     QUBES_HTTP_PROXY_URL = "http://127.0.0.1:8082"
 
@@ -301,18 +334,32 @@ def build_and_switch(update_lockfile: bool, standalone: bool):
 
     try:
         log(f"switching to new flake configuration at {CURRENT_FLAKE_DIR}/flake.nix\nThis may take a while...")
+        kills_before = oom_kills()
         subprocess.run(
             # We prefer boot over switch here because sometimes we hit 'SwitchInhibitors' that disallow switching.
             # booting is safer and we will reboot the template (and standalone for now) after this anyway.
             ["nixos-rebuild", "boot", "--flake", f"{CURRENT_FLAKE_DIR}#template"],
             check=True,
             capture_output=True,
+            preexec_fn=prefer_as_oom_victim,
             env={"https_proxy": QUBES_HTTP_PROXY_URL, "all_proxy": QUBES_HTTP_PROXY_URL, **os.environ} if not standalone else None,
 
         )
     except subprocess.CalledProcessError as err:
-        if err.returncode == -signal.SIGKILL:
-            raise OomKillerError("SIGKILL detected when running nixos-rebuild. Likely an oom killer")
+        # The kernel usually takes the nix build rather than nixos-rebuild itself, which
+        # then exits with an ordinary non-zero status and says nothing about memory. So
+        # ask the kernel what it did instead of reading the status.
+        kills_after = oom_kills()
+        killed = (
+            kills_before is not None
+            and kills_after is not None
+            and kills_after > kills_before
+        )
+        if err.returncode == -signal.SIGKILL or killed:
+            raise OomKillerError(
+                "the kernel killed a process for memory while nixos-rebuild ran. Give the "
+                f"template more memory and switch again: {err.stderr.decode()}"
+            )
         raise NixosRebuildError(f"nixos-rebuild failed: {err.stderr.decode()}")
 
 
