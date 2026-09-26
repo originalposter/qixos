@@ -201,15 +201,9 @@ in
         systemd.services.qubes-rootfs-resize = {
           # ensure the service is started on boot, since Install is ignored
           wantedBy = ["multi-user.target"];
-          # Seems like deadlock happens if we don't explicitly run after these.
-          after = ["qubes-qrexec-agent.service" "qubes-sysinit.service"];
           unitConfig = {
-            Before = "";
-            # Running this on an AppVM makes it hang on startup
-            # FIXME: This might not be true anymore if we have proper after conditions
-            # FIXME: We actually want this to run for standalones too but right now it causes a systemd deadlock bug that breaks subtly.
-            # For now we make this a template-only thing.
-            # ConditionPathExists = "/run/qubes/persistent-full";
+            # TODO: standalones want this too, via /run/qubes/persistent-full.
+            # Needs a real-qubes boot first.
             ConditionPathExists = "/run/qubes/this-is-templatevm";
           };
 
