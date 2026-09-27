@@ -101,14 +101,6 @@ def make_git(repo_root: Path):
         raise MakeGitError(f"failed to make a directory a git repo: {err}")
 
 
-def reset_ownership(member, _):
-    member.uid = 0
-    member.gid = 0
-    member.uname = "root"
-    member.gname = "root"
-    return member
-
-
 def read_protocol():
     # GET VERSION
     try:
@@ -154,7 +146,9 @@ def read_protocol():
             tar_dir_absolute = CURRENT_FLAKE_COPIED_DIR / tar_dir
             reader = TarReader(sys.stdin.buffer, blob_length)
             with tarfile.open(fileobj=reader, mode='r|') as tf:
-                tf.extractall(path=tar_dir_absolute, filter=reset_ownership)
+                # filter="data" sets ownership to the caller, so files are owned by root.
+                # It also does not accept symlinks which means the tar dir can't contain those.
+                tf.extractall(path=tar_dir_absolute, filter="data")
             # Need to make non-git dirs into git repos for nix to see them properly
             is_git = (tar_dir_absolute / ".git").exists()
             if not is_git:
