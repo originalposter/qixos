@@ -12,16 +12,9 @@
   }: let
     lib = nixpkgs.lib;
     system = "x86_64-linux";
-    qubesPackages = final: prev: {
-      qubes-core-qubesdb = prev.callPackage ../../core/qubes-pkgs/qubes-core-qubesdb {};
-      qubes-core-vchan-xen = prev.callPackage ../../core/qubes-pkgs/qubes-core-vchan-xen {};
-      qubes-core-qrexec = prev.callPackage ../../core/qubes-pkgs/qubes-core-qrexec {};
-      qubes-core-agent-linux = prev.callPackage ../../core/qubes-pkgs/qubes-core-agent-linux {};
-      qubes-linux-utils = prev.callPackage ../../core/qubes-pkgs/qubes-linux-utils {};
-      qubes-gui-common = prev.callPackage ../../core/qubes-pkgs/qubes-gui-common {};
-      qubes-gui-agent-linux = prev.callPackage ../../core/qubes-pkgs/qubes-gui-agent-linux {};
-      qubes-usb-proxy = prev.callPackage ../../core/qubes-pkgs/qubes-usb-proxy {};
-    };
+    # Core's own overlay, not a copy of it. Anything core's modules expect from `pkgs`
+    # has to be here too, and a copy would not stay that way.
+    qubesPackages = import ../../core/qubes-pkgs/overlay.nix;
 
     pkgs = import nixpkgs {
       inherit system;
@@ -31,22 +24,7 @@
     };
   in rec {
     overlays.default = qubesPackages;
-    nixosModules.default = {
-      config,
-      lib,
-      pkgs,
-      ...
-    }: {
-      imports = [
-        ../../core/qubes-modules/core.nix
-        ../../core/qubes-modules/db.nix
-        ../../core/qubes-modules/gui.nix
-        ../../core/qubes-modules/networking.nix
-        ../../core/qubes-modules/qrexec.nix
-        ../../core/qubes-modules/updates.nix
-        ../../core/qubes-modules/usb.nix
-      ];
-    };
+    nixosModules.default = ../../core/qubes-modules;
     nixosProfiles.default = {
       config,
       lib,

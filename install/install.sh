@@ -12,6 +12,11 @@
 # Each install step roughly corresponds to each step in the manual install process.
 #
 set -eu
+
+# The current version of the qixos core and qixos-community repos.
+# This is the name of the tag that will be used.
+CURRENT_VERSION="v0.2.0"
+
 # Directory where STEP_X_COMPLETE files are stored
 COMPLETED_INSTALL_STEPS_DIR="/var/lib/qixos-install"
 
@@ -28,7 +33,7 @@ QIXOS_BASE_TEMPLATE="$QIXOS_ADMIN_NAME-base-template"
 
 # URL to the flake that the qixos admin template will switch to - very reasonable to change, but make sure it points
 # to a correct nube template configuration and that the url is accessible (not a private git repo)
-QIXOS_ADMIN_FLAKE="${QIXOS_ADMIN_FLAKE:-"\"git+https://github.com/originalposter/qixos-community?ref=master&dir=users/op/nubes/standalones/qixos-admin\"#default"}"
+QIXOS_ADMIN_FLAKE="${QIXOS_ADMIN_FLAKE:-"\"git+https://github.com/originalposter/qixos-community?ref=refs/tags/$CURRENT_VERSION&dir=users/op/nubes/standalones/qixos-admin\"#default"}"
 
 # Name of the qixos admin policy file in dom0 - reasonable to change but primarily to change the number it starts with
 # to affect policy evaluation ordering.
@@ -144,9 +149,13 @@ STEP_2="$COMPLETED_INSTALL_STEPS_DIR/STEP_2_COMPLETE"
 if should_run 2 "$STEP_2"; then
   trap 'echo "Caught interrupt, exiting"; exit 130 &>2' INT TERM
   echo "STEP 2: Installing nix in $NIX_BUILD_QUBE_NAME"
-  
-  echo "Installing nix in $NIX_BUILD_QUBE_NAME then building qubes nixos template .rpm file. This may take up to 60 minutes."
-  qvm-run -p "$NIX_BUILD_QUBE_NAME" "sh <(curl --proto '=https' --tlsv1.2 -L https://nixos.org/nix/install) --no-daemon && . /home/user/.nix-profile/etc/profile.d/nix.sh && nix --extra-experimental-features nix-command --extra-experimental-features flakes --option system-features 'kvm benchmark big-parallel nixos-test' build --no-write-lock-file 'git+https://github.com/originalposter/qixos?ref=master&dir=install/build-nix-template'#rpm"
+
+  echo "Installing nix in $NIX_BUILD_QUBE_NAME and building qubes nixos template .rpm file. This may take up to 60 minutes."
+  qvm-run -p "$NIX_BUILD_QUBE_NAME" "sh <(curl --proto '=https' --tlsv1.2 -L https://nixos.org/nix/install) --no-daemon && \
+	  . /home/user/.nix-profile/etc/profile.d/nix.sh && \
+	  export NIX_CONFIG='experimental-features = nix-command flakes' && \
+	  nix shell nixpkgs#git --command \
+	  nix --option system-features 'kvm benchmark big-parallel nixos-test' build --no-write-lock-file 'git+https://github.com/originalposter/qixos?ref=refs/tags/$CURRENT_VERSION&dir=install/build-nix-template'#rpm"
   
   trap - INT TERM
   touch "$STEP_2"

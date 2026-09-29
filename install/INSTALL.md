@@ -24,9 +24,9 @@ qvm-run -p <name of vm containing install.sh> "cat /home/user/path/to/install.sh
 ```
 
 ### Verifying the integrity of the installation script
-You should check that the `sha256 sum` of the file is `6b1a8f35b8804b8c6892f272fa9dd2827dac97c089540e42e56a554a387d7fca` you may do this by running in dom0:
+You should check that the `sha256 sum` of the file is `5f99bae1a19168352590aff359c9d8415577084d347be023d8a880a0c0058846` you may do this by running in dom0:
 ```
-sha256sum dom0_install.sh
+sha256sum dom0_qixos_install.sh
 ```
 
 Below is a signature that this is indeed the hash. The public key can be found in the root README.md
@@ -34,16 +34,15 @@ Below is a signature that this is indeed the hash. The public key can be found i
 -----BEGIN PGP SIGNED MESSAGE-----
 Hash: SHA512
 
-sha256sum install/install.sh =
-6b1a8f35b8804b8c6892f272fa9dd2827dac97c089540e42e56a554a387d7fca
+$ sha256sum install/install.sh
+5f99bae1a19168352590aff359c9d8415577084d347be023d8a880a0c0058846
 
 -----BEGIN PGP SIGNATURE-----
 
-wr0EARYKAG8FgmpZ27YJEN8XKBurF5LhRxQAAAAAAB4AIHNhbHRAbm90YXRpb25z
-LnNlcXVvaWEtcGdwLm9yZyAGUKQ07rozVdZ9n+L9DARbRLQ8NqSDGv0W5f3o//Fh
-FiEE41DMCR1/PIIrcJ023xcoG6sXkuEAANm7AP9+Ues48QEX5d1WkooMHJTR89Fv
-wbQgBvVA/yo7FOWnfAEAoqlJDVyDwq9jcn+GSRBpaOITthC+DO/pgMlqrJz76Qs=
-=b/1k
+iHUEARYKAB0WIQS2DjPZNFBL6NulmcAoyV0EvVdp8QUCarzibgAKCRAoyV0EvVdp
+8bpyAQDp0qa15i+Dohmpx6GCADegb8NQdKYU73gcgB8sse5EbQD/eW+dYWeFIcNv
+2kCUFl07pAgpTfDkqoTS4nc3qmyKBwY=
+=xtUo
 -----END PGP SIGNATURE-----
 ```
 
@@ -76,10 +75,15 @@ qvm-volume resize temporary-qixos-nix-build:root $((30 * 1024 * 1024 * 1024))
 
 ### Step 2
 In `temporary-qixos-nix-build` install nix, source it and then build the image from this repo.
+
+N.B we install git through `nix shell` here but you can install it however you want.
+`git` just needs to be on the system.
 ```
 sh <(curl --proto '=https' --tlsv1.2 -L https://nixos.org/nix/install) --no-daemon
 . /home/user/.nix-profile/etc/profile.d/nix.sh
-nix --extra-experimental-features "nix-command flakes" --option system-features 'kvm benchmark big-parallel nixos-test' build --no-write-lock-file 'git+https://github.com/originalposter/qixos?ref=master&dir=install/build-nix-template'#rpm
+export NIX_CONFIG='experimental-features = nix-command flakes'
+nix shell nixpkgs#git
+nix --option system-features 'kvm benchmark big-parallel nixos-test' build --no-write-lock-file 'git+https://github.com/originalposter/qixos?ref=refs/tags/v0.2.0&dir=install/build-nix-template'#rpm
 ```
 
 ### Step 3
@@ -228,7 +232,7 @@ I'll illustrate with my own.
 Inside `qixos-admin-base-template`:
 ```
 sudo su
-nixos-rebuild boot --flake "git+https://github.com/originalposter/qixos-community?ref=master&dir=users/op/nubes/templates/basic"#default
+nixos-rebuild boot --flake "git+https://github.com/originalposter/qixos-community?ref=refs/tags/v0.2.0&dir=users/op/nubes/templates/basic"#default
 ```
 
 Then shutdown the template
@@ -242,7 +246,7 @@ qvm-create qixos-admin -t qixos-admin-base-template --label black --standalone
 
 In `qixos-admin`:
 ```
-sudo nixos-rebuild boot --flake "git+https://github.com/originalposter/qixos-community?ref=master&dir=users/op/nubes/standalones/qixos-admin"#default
+sudo nixos-rebuild boot --flake "git+https://github.com/originalposter/qixos-community?ref=refs/tags/v0.2.0&dir=users/op/nubes/standalones/qixos-admin"#default
 ```
 Then shut down `qixos-admin`
 
