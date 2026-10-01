@@ -155,6 +155,27 @@ de-privileged format.
 Users are encouraged to use the nixos module for home-manager instead.
 
 
+### An installed template builds the release it was installed from
+The flake shipped to a template's `/etc/nixos` named no ref for qixos core and took nixpkgs
+from `nixos-unstable`, and no lock shipped beside it. So the first rebuild after an install
+resolved both afresh: core's default branch rather than the release, and whatever
+nixos-unstable was that day. Two installs of the same version produced different systems.
+
+Core is now pinned to the release tag there, and nixpkgs follows core's own, so the template
+is built against the nixpkgs core is checked against rather than a second choice that can
+disagree with it.
+
+
+### The installed template declares its stateVersion
+The template the installer builds now sets `system.stateVersion = "26.05"`, the value core
+gives every nube. Left unset, nixpkgs defaults it to its own release, so it moved whenever
+the lock did.
+
+It matters because the built `nixos` template is where a cluster's state begins.
+Every qixos-created template is downstream of the `qixos-admin-base-template` which is downstream
+of `nixos`. Now `stateVersion` is consistently `26.05` throughout the entire creation process.
+
+
 ### Fixes
 - Protocol error codes no longer exceed 255, so they survive a process exit. The
   out-of-memory report could not previously fire because its code arrived truncated.
