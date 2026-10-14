@@ -73,9 +73,8 @@
 # `switch-to-configuration` and home-manager both do it. If no session is open yet the call simply
 # fails and is ignored - `default.target` will then start normally when the session does open, and
 # pick everything up anyway.
-{ appVmNames, activationDir, runQixosDir }: { pkgs, ... }:
+{ activationDir, runQixosDir }: { pkgs, ... }:
 let
-  nixosActivationCall = name: "${activationDir}/${name}/nixos/bin/switch-to-configuration test";
   alreadyActivatedPath = "${runQixosDir}/already-activated";
 
   activationScript = pkgs.writeShellScript "qixos-appvm-switch" ''
@@ -116,17 +115,15 @@ let
     else
       QUBE_NAME=$(${pkgs.qubes-core-qubesdb}/bin/qubesdb-read /name)
     fi
-    case "$QUBE_NAME" in
-      ${builtins.concatStringsSep "\n      " (
-          map (name: ''
-            ${name})
-              ${nixosActivationCall name}
-              start_user_default_target
-              ;;
-          '') appVmNames
-      )}
-      *) echo "No qixos config for qube: $QUBE_NAME"; exit 1 ;;
-    esac
+    # Looked up at runtime rather than listed here, so that this unit does not change
+    # with the cluster's membership. See NOTE Serpent I.
+    switch="${activationDir}/$QUBE_NAME/nixos/bin/switch-to-configuration"
+    if [ ! -x "$switch" ]; then
+      echo "No qixos config for qube: $QUBE_NAME"
+      exit 1
+    fi
+    "$switch" test
+    start_user_default_target
   '';
 in
 {
@@ -155,6 +152,12 @@ in
     before = [ "user@1000.service" ];
     requires = [ "qubes-db.service" ];
     wantedBy = [ "default.target" ];
+
+    # An AppVM whose build failed keeps the closure of an earlier switch, built from an
+    # earlier nixpkgs, and this unit in it differs from the one running. Without this
+    # switch-to-configuration would restart the changed unit, which is the job running
+    # it. See NOTE Serpent I.
+    restartIfChanged = false;
 
     path = with pkgs; [ nix coreutils findutils gnused util-linux ];
 

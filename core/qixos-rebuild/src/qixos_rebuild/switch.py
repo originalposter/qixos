@@ -8,7 +8,7 @@ from qixos_rebuild.errors import LocalFlakeError, QixosSwitchError
 from .config import LocalFlake, QixosConfig, NubeClusterConfig, StandaloneVMConfig
 from qubesadmin.app import QubesBase
 from pathlib import Path
-from qixos_rebuild.qrexec.protocol import ProtocolJson, Flake, FlakeAndDir, OomKillerError, SWITCH_LOG_PATH
+from qixos_rebuild.qrexec.protocol import ProtocolJson, Flake, FlakeAndDir, OomKillerError, AppVmBuildError, SWITCH_LOG_PATH
 
 QREXEC_SERVICE = "qixos.Switch"
 REMOTE_SWITCH_ARGUMENT = "REMOTE"
@@ -141,6 +141,8 @@ def switch_protocol(tmpl_name: str, blob: ProtocolJson, tardirs: list[Path]):
     if exit_code != 0:
         if exit_code == OomKillerError.ERROR_CODE:
             raise OomKillerError(f"qixos.Switch failed likely due to an out-of-memory killer. Try to increase the RAM size of the {tmpl_name} VM.")
+        if exit_code == AppVmBuildError.ERROR_CODE:
+            raise AppVmBuildError(f"[{tmpl_name}] switched, but some of its AppVMs failed to build. Those are left on the configuration they last built successfully. Which ones is in {SWITCH_LOG_PATH} on [{tmpl_name}]")
 
         log.error("qixos.Switch call for [%s] failed with: %s", tmpl_name, exit_code)
         raise QixosSwitchError(f"qixos.Switch call for [{tmpl_name}] failed with {exit_code}")
@@ -257,16 +259,19 @@ def ping_template(tmpl_name: str, cluster_config: NubeClusterConfig, qixos_confi
     log.info("protocol_blob: %s", protocol_blob.model_dump_json(indent=2))
 
     # Perform protocol
-    switch_protocol(tmpl_name, protocol_blob, archived_paths)
-
-    for archive_path in archived_paths:
-        os.unlink(archive_path)
+    try:
+        switch_protocol(tmpl_name, protocol_blob, archived_paths)
+    finally:
+        # Also on failure, now that one cluster failing is not the end of the run.
+        for archive_path in archived_paths:
+            os.unlink(archive_path)
 
 
 def switch_templates(config: QixosConfig, app: QubesBase, flake_argument: str, only: list[str] | None = None, update_lockfile: bool = False):
     log.info("switch templates")
     log.debug("config: ", config)
     switched_something = False
+    appvms_failed = []
     for tmpl_name, cluster_config in config.nube_clusters.items():
         if only is not None and tmpl_name not in only:
             # If only is set we only switch a subset of templates
@@ -280,7 +285,13 @@ def switch_templates(config: QixosConfig, app: QubesBase, flake_argument: str, o
 
         qixos_config_dir = _flake_argument_to_qixos_config_dir(flake_argument)
 
-        ping_template(tmpl_name, cluster_config, qixos_config_dir, update_lockfile)
+        # The template and the AppVMs that did build are good, so this cluster is shut
+        # down to commit them and the rest are still switched.
+        try:
+            ping_template(tmpl_name, cluster_config, qixos_config_dir, update_lockfile)
+        except AppVmBuildError as e:
+            log.error("%s", e)
+            appvms_failed.append(tmpl_name)
 
         vm.shutdown()
 
@@ -303,3 +314,6 @@ def switch_templates(config: QixosConfig, app: QubesBase, flake_argument: str, o
 
     if not switched_something and only is not None:
         print("Warning: found no nubes to switch")
+
+    if appvms_failed:
+        raise QixosSwitchError(f"AppVMs failed to build in: {', '.join(appvms_failed)}. Find each log at {SWITCH_LOG_PATH} on the template")

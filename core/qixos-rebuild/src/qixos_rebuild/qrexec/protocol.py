@@ -70,3 +70,8 @@ class MakeGitError(Exception):
 
 class OomKillerError(Exception):
     ERROR_CODE = 17
+
+
+# The template itself switched. Which AppVMs did not build is in the template's log.
+class AppVmBuildError(Exception):
+    ERROR_CODE = 18
