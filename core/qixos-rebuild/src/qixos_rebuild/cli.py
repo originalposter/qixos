@@ -8,15 +8,17 @@ from .config import eval_config
 from .apply import apply
 from .switch import switch_templates
 from .errors import ConfigError, DuplicateVmName, NixError, NoBaseTemplateError, NoDispVmTemplateError, NoNetVmError, QixosSwitchError, QubesError, RenameError, LocalFlakeError
-from .qrexec.protocol import OomKillerError
+from .qrexec.protocol import OomKillerError, SinceLast
 from .state import get_managed_vms, diff, validate
 
 
 logging.basicConfig(
     level=os.environ.get("QIXOS_LOG_LEVEL", "INFO").upper(),
-    format="%(levelname)s: %(message)s",
+    format="%(asctime)s %(since_last)s %(levelname)s: %(message)s",
     stream=sys.stderr,
 )
+# On the handler, which unlike a logger's own filters sees every logger's records.
+logging.getLogger().handlers[0].addFilter(SinceLast())
 
 
 log = logging.getLogger("qixos")

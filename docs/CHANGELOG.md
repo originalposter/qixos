@@ -34,6 +34,12 @@ builds the template, activates it, and then builds the AppVMs one after another.
 - Nothing reads `/var/qixos/current-flake` any more, and an upgraded template keeps it.
   Delete it by hand if you want the space back.
 
+### Log lines say when, and how long since the last one
+Every line `qixos-rebuild` logs now starts with the time and with how long ago the previous
+line was, as in `+63s`. `/var/qixos/switch.log` and the template's journal carry the same
+gap, and the switch logs a line as the template and each AppVM finishes building, so the
+gap on it is how long that build took.
+
 ## v0.2.0
 
 ### Security

@@ -15,7 +15,7 @@ import shutil
 import os
 import signal
 from string import Template
-from .protocol import ProtocolJson, Flake, BreakingProtocolError, UnknownError, VersionNotSupportedError, UntarError, MissingAttributeError, NixosRebuildError, MakeGitError, OomKillerError, AppVmBuildError, SWITCH_LOG_PATH, SWITCH_LOG_TAG
+from .protocol import ProtocolJson, Flake, BreakingProtocolError, UnknownError, VersionNotSupportedError, UntarError, MissingAttributeError, NixosRebuildError, MakeGitError, OomKillerError, AppVmBuildError, SinceLast, SWITCH_LOG_PATH, SWITCH_LOG_TAG
 
 # Implements the qixos.Switch protocol between the qixos-admin VM's qixos-rebuild script
 # and the template VM running this script.
@@ -79,13 +79,14 @@ def setup_logging():
     os.makedirs(os.path.dirname(SWITCH_LOG_PATH), exist_ok=True)
 
     journal = logging.handlers.SysLogHandler("/dev/log")
-    journal.setFormatter(logging.Formatter(f"{SWITCH_LOG_TAG}: %(message)s"))
+    journal.setFormatter(logging.Formatter(f"{SWITCH_LOG_TAG}: %(since_last)s %(message)s"))
 
     # Capped
     disk = logging.handlers.RotatingFileHandler(SWITCH_LOG_PATH, maxBytes=1 << 20, backupCount=3)
-    disk.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
+    disk.setFormatter(logging.Formatter("%(asctime)s %(since_last)s %(message)s"))
 
     _log.setLevel(logging.INFO)
+    _log.addFilter(SinceLast())
     _log.addHandler(journal)
     _log.addHandler(disk)
 
@@ -413,6 +414,7 @@ def build_and_switch(protocol: ProtocolJson):
         "nixos-rebuild",
         build_env,
     )
+    log("built the template")
 
     appvms = appvm_sources(protocol)
     forget_removed_appvms(appvms)
@@ -441,6 +443,7 @@ def build_and_switch(protocol: ProtocolJson):
                 f"the build of AppVM [{name}]",
                 build_env,
             )
+            log(f"built AppVM [{name}]")
         except OomKillerError as e:
             log(e)
             failed.append(name)
