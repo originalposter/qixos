@@ -128,7 +128,7 @@ This will start the TemplateVMs and `nixos-rebuild` them with the new configurat
 In order to update a nube you need to update that nubes `flake.lock`. If you're updating `nixpkgs` or `qixCore` then update the `flake.lock` of the template, since all AppVMs in a cluster are forced onto the template's version of both. Inner configurations must name these two inputs `nixpkgs` and `qixCore` for that to take effect; an AppVM that names them something else keeps its own pin and Nix only warns about it.
 If you don't have write access to the repo containing the `flake.lock` then you can switch to using a local version of the nube config.
 Once the `flake.lock` has been updated you pass the `--update` flag to `qixos-rebuild` for either `apply` or `switch`.
-This will update the generated `/var/qixos/current-flake/flake.lock` to point at your updated flake.
+This will update the generated `/var/qixos/template-flake/flake.lock` and `/var/qixos/appvm-flakes/<name>/flake.lock` to point at your updated flake.
 
 
 ## Remote and local flakes
@@ -138,13 +138,13 @@ Each `AppVms` attribute has a `localFlake` or `remoteFlake` field attribute. The
 The `localFlake` also has an optional attribute called `copyDir` which takes a string which contains an absolute path to a local directory.
 If `copyDir` is given then `path` must be a local path relative to the `copyDir` directory.
 
-localFlake internally works by copying the git root of the outer config's flake.nix (or the specified `copyDir`) to the TemplateVMs `/var/qixos/current-flake/local-repos/` directory.
+localFlake internally works by copying the git root of the outer config's flake.nix (or the specified `copyDir`) to the TemplateVMs `/var/qixos/local-repos/` directory.
 
 
 ## Debugging
 There are 3 places that are likely good starting points for debugging a problem.
 1. The logged outputs from `qixos-rebuild` in the admin VM. This should tell you if there are configuration errors in the outer config.
-2. In the problem TemplateVM lookup the generated `flake.nix` file in `/var/qixos/current-flake/`.
-This flake represents the entire template state and running `nixos-rebuild` on it with the `#template` output is the canonical way to switch the template.
+2. If the error is related to a specific template then in that template view the log at `/var/qixos/switch.log`.
+You can also find the `flake.nix` for each appvm and the template in `/var/qixos/appvm-flakes` and `/var/qixos/template-flake`.
 3. In the problem AppVM check `sudo systemctl status qixos-appvm-switch.service`. This is a systemd job that runs on AppVM startup and switches from the templates NixOS configuration to the AppVMs configuration. If it fails you can look at the logs with `journalctl -u qixos-appvm-switch`.
 If the job fails you may try to run `sudo systemctl restart qixos-appvm-switch.service` to restart it, if it then consistently succeeds it is indicative of a race condition in the switching.
