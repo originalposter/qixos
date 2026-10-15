@@ -48,6 +48,22 @@
             nube.nixosConfigurations.default.config.system.build.toplevel.drvPath
             (pkgs.runCommand "core-modules-evaluate" { } "touch $out");
 
+      # qixos.Switch builds a cluster's template before any of its AppVMs, and one AppVM
+      # that fails must leave the template and its siblings standing. Both depend on the
+      # template's closure not referring to an AppVM's, which the throw stands guard over.
+      # Through mkNubeCluster, which is the call an older qixos.Switch still makes and so
+      # the one place a template and its AppVMs are still handed over together.
+      templateEvaluatesWithoutItsAppVms =
+        let
+          cluster = self.lib.mkNubeClusterWith { inherit nixpkgs; } {
+            template.modules = [ ];
+            apps.broken.modules = [ (throw "building the template evaluated an AppVM") ];
+          };
+        in
+          builtins.seq
+            cluster.nixosConfigurations.template.config.system.build.toplevel.drvPath
+            (pkgs.runCommand "template-evaluates-without-its-appvms" { } "touch $out");
+
       # install/build-nix-template is its own flake, and the installer builds it as
       # `?dir=install/build-nix-template#rpm`. It cannot be an input here: a `path:` input
       # copies only that subdirectory, so its `../../core/...` paths land outside the store

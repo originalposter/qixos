@@ -17,15 +17,9 @@ The rough responsibilities of `qixos-rebuild` is to
 `qixos.Switch` is a python script running on template VMs and standalone VMs.
 It is called via qrexec by `qixos-rebuild` and its responsibilities are
 1) coordinate over the `qixos.Switch` protocol with `qixos-rebuild`.
-2) receive copies of locally defined configurations from `qixos-admin` and place in `/var/qixos/current-flake/local-repos/`
-3) generate a flake at `/var/qixos/current-flake/flake.nix`
-4) switches the template or standalone with `nixos-rebuild boot --flake /var/qixos/current-flake/flake.nix#template`
-
-### Generated flake
-The generated flake is the canonical declarative state of the template and standalone.
-The flake pulls in the inner configuration flake for all AppVMs as well as the TemplateVMs own configuration.
-It puts these together using the qixos nix library function `mkNubeCluster`.
-This is responsible for hooking up the logic which later switches each AppVM to its own configuration on boot.
+2) receive copies of locally defined configurations from `qixos-admin` and place in `/var/qixos/local-repos/`
+3) generate a flake for each AppVM and the template at `/var/qixos/appvm-flakes/<name>/flake.nix` and `/var/qixos/template-flake/flake.nix`
+4) switches the template or standalone with `nixos-rebuild boot --flake /var/qixos/template-flake#template`
 
 ## Inner and outer configurations
 There are two types of configurations
@@ -38,8 +32,8 @@ The outer configuration is evaluated inside `qixos-admin` the inner configuratio
 This is in-line with desiderata 3.
 
 ## QixOS AppVM Switch systemd job
-Each AppVM has it's own complete nixos configuration which is built and then symlinked in `/run/qixos/activation/<VM name>/nixos` by the TemplateVM.
-The AppVM will on boot run a systemd job called `qixos-appvm-switch.service` which looks up the configuration for that AppVMs name and switches to it with `nixos-rebuild test --flake /run/qixos/activation/<VM name>/nixos`.
+Each AppVM has it's own complete nixos configuration which is built and then symlinked in `/var/qixos/activation/<VM name>/nixos` by the TemplateVM.
+When the AppVM boots it will run a systemd job called `qixos-appvm-switch.service` which looks up the configuration for that AppVMs name and switches to it with `/var/qixos/activation/<VM name>/nixos/bin/switch-to-configuration test`.
 This will set up the AppVMs configuration.
 
 A DisposableVM boots the same template root and runs the same job, but its own name is randomly generated and matches no configuration.
@@ -139,10 +133,10 @@ For that reason the nix tooling will not put secrets there and there are multipl
 This is not a recommended practice in any serious security engineering anyway.
 
 ## Design decision 4
-When `qixos-rebuild` switches a TemplateVM or StandaloneVM it uses `qixos.Switch` to generate `/var/qixos/current-flake/flake.nix` which acts as an intermediare step before calling `nixos-rebuild boot` on that flake.
+When `qixos-rebuild` switches a TemplateVM or StandaloneVM it uses `qixos.Switch` to generate `/var/qixos/template-flake/flake.nix` and `/var/qixos/appvm-flakes/<name>/flake.nix` which act as an intermediary steps before calling `nixos-rebuild boot` on the template flake.
 
 This both simplifies the switch flow by dividing it up into parts.
-It makes debugging easier because the generated flake acts as the canonical source of truth for the VMs config.
+It makes debugging easier because the generated flakes act as the canonical source of truths for the VMs configs.
 It also lets the user switch to that state manually without having to evoke the `qixos.Switch` machinery.
 
 ## Design decision 5
@@ -157,7 +151,7 @@ In some cases the user may want to modify their config without pushing to a remo
 For example if they want to update the `flake.lock` without having write access to the repo.
 
 ## Design decision 6
-The generated `current-flake/flake.nix` uses the template configurations nixpkgs as the canonical version and forces the dependent AppVMs to use that same version for nixpkgs.
+The generated flakes uses the template configurations nixpkgs as the canonical version and forces the dependent AppVMs to use that same version for nixpkgs.
 
 The decision for what nixpkgs version to use can be done in 3 places:
 1. The TemplateVMs nixpkgs
@@ -176,7 +170,7 @@ This let's the returned value from `mkNubeApp` have a `nixosConfigurations.defau
 This field exposes a regular NixOS configuration which can be used to switch directly to that AppVM config.
 Note that this config will use its own nixpkgs version rather than that of its template VM which is different from the normal case where it uses its templates nixpkgs version.
 
-This functionality is provided because it allows directly switching to an AppVM rather than going through the `qixos-rebuild` and `qixos.Switch` and `current-flake/flake.nix` machinery.
+This functionality is provided because it allows directly switching to an AppVM rather than going through the `qixos-rebuild` and `qixos.Switch` and `/var/qixos/*-flake/flake.nix` machinery.
 This makes debugging and testing easier as well as allows for more versatility.
 
 ## Design decision 8
@@ -209,9 +203,3 @@ QixOS used to have a `rootConfiguration` key alongside a `homeConfiguration` key
 That produced a second activation package per AppVM, a second symlink in the template's activation directory, and a second systemd job to run it.
 It was removed because home manager is not a must-use for nixos users, and because using it as a nixos module works perfectly well.
 The reason it was originally built with home manager as a privileged concept was a misguided attempt at making AppVM switching easier.
-
-# Known issues
-
-## One AppVM configuration failing causes the entire template build to fail
-Each template builds all of the dependent AppVMs. If one of the AppVM configs fail to build then the entire template build will fail.
-Ideally we'd have the template build flag the failure but continue to build with that AppVM config disabled.

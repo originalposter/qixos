@@ -1,5 +1,45 @@
 # Changelog
 
+## Unreleased
+
+### A template is built before its AppVMs, and each AppVM on its own
+A switch used to build a template and every AppVM of its cluster as one nix build. It now
+builds the template, activates it, and then builds the AppVMs one after another.
+
+- **Switch twice after upgrading.** The switch that brings a template onto this version
+  is still carried out by the old code, which builds the template and nothing else. Until
+  the second switch its AppVMs have no configuration of their own, and boot as the
+  template with `qixos-appvm-switch.service` failed.
+- **A template needs less memory.** It evaluates one configuration at a time rather than
+  the whole cluster at once, so a `memory` raised to get a large cluster through a switch
+  can likely come down.
+- **One AppVM failing no longer fails its cluster.** The template and the AppVMs that did
+  build are switched as usual. The one that failed keeps the configuration it last built
+  successfully, and unless an AppVM build was killed for memory, `qixos-rebuild` carries on
+  with the remaining clusters and then exits non-zero, naming the template whose
+  `/var/qixos/switch.log` says which AppVM it was.
+  The switch exits with 18 in this case.
+- **An AppVM's inputs are fetched by the template's new configuration.** What a template
+  module provides for fetching, split-ssh for a private repo for instance, is running by
+  the time the AppVMs are fetched. If the new configuration cannot be activated without a
+  reboot the AppVMs are built anyway, and one that needed it fails by itself.
+- The template's generated flake is now `/var/qixos/template-flake/flake.nix` and describes
+  the template alone, no longer `/var/qixos/current-flake/flake.nix`. Each AppVM has a
+  generated flake of its own at `/var/qixos/appvm-flakes/<name>/flake.nix`, which builds it
+  against the same `nixpkgs` and `qixCore` the template was built from.
+- An AppVM's configuration is found at `/var/qixos/activation/<name>/nixos` rather than
+  under `/run/qixos/activation`.
+- The copies of `localFlake` directories shipped to a template are kept in
+  `/var/qixos/local-repos` rather than `/var/qixos/current-flake/local-repos`.
+- Nothing reads `/var/qixos/current-flake` any more, and an upgraded template keeps it.
+  Delete it by hand if you want the space back.
+
+### Log lines say when, and how long since the last one
+Every line `qixos-rebuild` logs now starts with the time and with how long ago the previous
+line was, as in `+63s`. `/var/qixos/switch.log` and the template's journal carry the same
+gap, and the switch logs a line as the template and each AppVM finishes building, so the
+gap on it is how long that build took.
+
 ## v0.2.0
 
 ### Security

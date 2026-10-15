@@ -1,9 +1,31 @@
+import logging
+import time
+
 from pydantic import BaseModel
 
 # Where qixos.Switch logs on the template. Shared because the admin cannot read that log
 # but has to be able to say where it is.
 SWITCH_LOG_PATH = "/var/qixos/switch.log"
 SWITCH_LOG_TAG = "qixos.Switch"
+
+
+class SinceLast(logging.Filter):
+    """Gives each record a `since_last`: how long ago the one before it was logged.
+
+    A switch is a few long steps with a line either side of each, so this is how long the
+    step took. Here because both ends of the switch log with it.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.last = time.monotonic()
+
+    def filter(self, record):
+        now = time.monotonic()
+        record.since_last = f"+{now - self.last:.0f}s"
+        self.last = now
+        return True
+
 
 # If a FlakePath is local it MUST be relative to the tarred directory root
 type FlakeSource = str
@@ -70,3 +92,8 @@ class MakeGitError(Exception):
 
 class OomKillerError(Exception):
     ERROR_CODE = 17
+
+
+# The template itself switched. Which AppVMs did not build is in the template's log.
+class AppVmBuildError(Exception):
+    ERROR_CODE = 18

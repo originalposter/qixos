@@ -9,17 +9,18 @@ import logging
 import logging.handlers
 import sys
 import tarfile
+import json
 import subprocess
 import shutil
 import os
 import signal
 from string import Template
-from .protocol import ProtocolJson, BreakingProtocolError, UnknownError, VersionNotSupportedError, UntarError, MissingAttributeError, NixosRebuildError, MakeGitError, OomKillerError, SWITCH_LOG_PATH, SWITCH_LOG_TAG
+from .protocol import ProtocolJson, Flake, BreakingProtocolError, UnknownError, VersionNotSupportedError, UntarError, MissingAttributeError, NixosRebuildError, MakeGitError, OomKillerError, AppVmBuildError, SinceLast, SWITCH_LOG_PATH, SWITCH_LOG_TAG
 
 # Implements the qixos.Switch protocol between the qixos-admin VM's qixos-rebuild script
 # and the template VM running this script.
-# This script is responsible for building the templates nixos derivation and all the associated
-# AppVM's derivations.
+# This script is responsible for building the templates nixos derivation and then, one at a
+# time, each associated AppVM's derivation.
 # The protocol is entirely uni-directional from the qixos-admin to the template.
 # The protocol contains the following steps:
 # 1. Send a line containing the version of the protocol in the format: v<integer>, e.g v0
@@ -35,11 +36,27 @@ from .protocol import ProtocolJson, BreakingProtocolError, UnknownError, Version
 #
 # This script should untar the tar stream into a directory which local paths are relative to
 
-CURRENT_FLAKE_DIR = "/var/qixos/current-flake"
-CURRENT_FLAKE_PATH = f"{CURRENT_FLAKE_DIR}/flake.nix"
-CURRENT_FLAKE_COPIED_DIR = Path(f"{CURRENT_FLAKE_DIR}/local-repos")
+TEMPLATE_FLAKE_DIR = "/var/qixos/template-flake"
+TEMPLATE_FLAKE_PATH = f"{TEMPLATE_FLAKE_DIR}/flake.nix"
+# Outside TEMPLATE_FLAKE_DIR, which nix reads as a path flake and so copies whole into the
+# store on every switch.
+LOCAL_REPOS_DIR = Path("/var/qixos/local-repos")
 
 INPUT_TEMPLATE_FLAKE_NAME = "template"
+
+# Each AppVM gets a generated flake of its own, in APPVM_FLAKES_DIR/<name>. One flake for
+# the whole cluster would be locked as a whole, which fetches every AppVM's inputs before
+# the template has switched and lets one that cannot be fetched fail them all.
+APPVM_FLAKES_DIR = Path("/var/qixos/appvm-flakes")
+# ACTIVATION_DIR/<name>/nixos is the closure an AppVM switches to at boot. On the root
+# volume, since that is what an AppVM takes from its template. Must match activationDir in
+# qixos-nix-libs/make-nube-system.nix.
+ACTIVATION_DIR = Path("/var/qixos/activation")
+
+# Where `nixos-rebuild boot` leaves the system it built.
+SYSTEM_PROFILE = "/nix/var/nix/profiles/system"
+
+QUBES_HTTP_PROXY_URL = "http://127.0.0.1:8082"
 
 # Inputs that every AppVM is forced to share with its template. An AppVM's closure is
 # evaluated and built by its template and read out of the template's /nix/store, so the two
@@ -62,13 +79,14 @@ def setup_logging():
     os.makedirs(os.path.dirname(SWITCH_LOG_PATH), exist_ok=True)
 
     journal = logging.handlers.SysLogHandler("/dev/log")
-    journal.setFormatter(logging.Formatter(f"{SWITCH_LOG_TAG}: %(message)s"))
+    journal.setFormatter(logging.Formatter(f"{SWITCH_LOG_TAG}: %(since_last)s %(message)s"))
 
     # Capped
     disk = logging.handlers.RotatingFileHandler(SWITCH_LOG_PATH, maxBytes=1 << 20, backupCount=3)
-    disk.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
+    disk.setFormatter(logging.Formatter("%(asctime)s %(since_last)s %(message)s"))
 
     _log.setLevel(logging.INFO)
+    _log.addFilter(SinceLast())
     _log.addHandler(journal)
     _log.addHandler(disk)
 
@@ -126,11 +144,8 @@ def read_protocol():
     json_blob: ProtocolJson = ProtocolJson.model_validate_json(json_blob_raw)
 
     # Delete the old directory
-    try:
-        shutil.rmtree(CURRENT_FLAKE_COPIED_DIR)
-    except FileNotFoundError:
-        pass
-    os.makedirs(CURRENT_FLAKE_COPIED_DIR, exist_ok=True)
+    shutil.rmtree(LOCAL_REPOS_DIR, ignore_errors=True)
+    os.makedirs(LOCAL_REPOS_DIR, exist_ok=True)
 
     for tar_dir in json_blob.tar_dirs:
         # GET THE TAR STREAM LENGTH
@@ -143,7 +158,7 @@ def read_protocol():
 
         # GET THE TAR STREAM
         try:
-            tar_dir_absolute = CURRENT_FLAKE_COPIED_DIR / tar_dir
+            tar_dir_absolute = LOCAL_REPOS_DIR / tar_dir
             reader = TarReader(sys.stdin.buffer, blob_length)
             with tarfile.open(fileobj=reader, mode='r|') as tf:
                 # filter="data" sets ownership to the caller, so files are owned by root.
@@ -187,73 +202,100 @@ def local_path_to_local_flake_url(local_path: str, tar_dir: Path) -> str:
     return f"git+file://{tar_dir}?dir={local_path}"
 
 
-def follows_from_template(appvm_name: str) -> list[str]:
-    """Input override lines pinning an AppVM to the template's shared inputs.
+def locked_template_input() -> str:
+    """The template input as the generated template flake locked it, as a nix attrset.
 
-    See INPUT_FOLLOWED_FROM_TEMPLATE for why these are forced.
+    An AppVM's flake names the template by this rather than by its url, so the AppVM is
+    built against the very revision the template was, whatever that url resolves to by
+    the time the AppVM's flake is locked.
     """
-    return [
-        f"{appvm_name}.inputs.{input_name}.follows = \"{INPUT_TEMPLATE_FLAKE_NAME}/{input_name}\";"
+    with open(f"{TEMPLATE_FLAKE_DIR}/flake.lock") as f:
+        nodes = json.load(f)["nodes"]
+    locked = nodes[nodes["root"]["inputs"][INPUT_TEMPLATE_FLAKE_NAME]]["locked"]
+    # A lock holds strings, integers and booleans, which JSON and nix write the same way.
+    return "{ " + " ".join(f"{key} = {json.dumps(value)};" for key, value in locked.items()) + " }"
+
+
+def appvm_sources(protocol: ProtocolJson) -> dict[str, Flake]:
+    """Each AppVM's inner config, with a local one's source rewritten to where it was untarred."""
+    sources = dict(protocol.remote_appvms)
+    for name, local in protocol.local_appvms.items():
+        url = local_path_to_local_flake_url(local.flake.source, LOCAL_REPOS_DIR / local.dir_name)
+        sources[name] = Flake(source=url, output=local.flake.output)
+    return sources
+
+
+def generate_appvm_flake(name: str, appvm: Flake, template_input: str, template_attribute: str):
+    follows = '\n    '.join(
+        f"appvm.inputs.{input_name}.follows = \"{INPUT_TEMPLATE_FLAKE_NAME}/{input_name}\";"
         for input_name in INPUT_FOLLOWED_FROM_TEMPLATE
-    ]
+    )
+
+    flake = Template('''{
+  # THIS FILE WAS AUTO-GENERATED BY qixos.Switch IN THE qixos-rebuild LIFECYCLE
+  inputs = {
+    # The template as ${TEMPLATE_FLAKE_PATH} locked it
+    ${INPUT_TEMPLATE_FLAKE_NAME} = ${template_input};
+    appvm.url = "${flake_url}";
+    ${follows}
+  };
+
+  outputs = inputs:
+    let
+      template = inputs.${INPUT_TEMPLATE_FLAKE_NAME}.${template_attribute};
+    in {
+      nixosConfigurations."${name}" = template.lib.mkNubeSystem inputs.appvm.${output}.config;
+    };
+}''').substitute(
+        INPUT_TEMPLATE_FLAKE_NAME=INPUT_TEMPLATE_FLAKE_NAME,
+        TEMPLATE_FLAKE_PATH=TEMPLATE_FLAKE_PATH,
+        template_input=template_input,
+        flake_url=appvm.source,
+        follows=follows,
+        template_attribute=template_attribute,
+        name=name,
+        output=appvm.output,
+    )
+
+    os.makedirs(APPVM_FLAKES_DIR / name, exist_ok=True)
+    with open(APPVM_FLAKES_DIR / name / "flake.nix", 'w') as f:
+        f.write(flake)
 
 
-def generate_flake(protocol: ProtocolJson):
-    input_strings = []
-    output_appvm_strings = []
-
-    for name, local_appvm_data in protocol.local_appvms.items():
-        appvm_name = f"\"appvm-{name}\""
-        flake_url = local_path_to_local_flake_url(local_appvm_data.flake.source, CURRENT_FLAKE_COPIED_DIR / local_appvm_data.dir_name)
-        input_strings.append(f"{appvm_name}.url = \"{flake_url}\";")
-        input_strings.extend(follows_from_template(appvm_name))
-        output_appvm_strings.append(f"{name} = inputs.{appvm_name}." + f"{local_appvm_data.flake.output}.config;")
-
-    for name, flake in protocol.remote_appvms.items():
-        appvm_name = f"\"appvm-{name}\""
-        input_strings.append(f"{appvm_name}.url = \"{flake.source}\";")
-        input_strings.extend(follows_from_template(appvm_name))
-        output_appvm_strings.append(f"{name} = inputs.{appvm_name}." + f"{flake.output}.config;")
-
+def generate_template_flake(protocol: ProtocolJson):
+    template_attribute = protocol.template_flake.output
     if protocol.template_dirname is not None:
-        template_attribute = protocol.template_flake.output
-        template_flake_url = local_path_to_local_flake_url(protocol.template_flake.source, CURRENT_FLAKE_COPIED_DIR / protocol.template_dirname)
+        template_flake_url = local_path_to_local_flake_url(protocol.template_flake.source, LOCAL_REPOS_DIR / protocol.template_dirname)
     else:
         template_flake_url = protocol.template_flake.source
-        template_attribute = protocol.template_flake.output
 
-    input_strings.append(f"{INPUT_TEMPLATE_FLAKE_NAME}.url = \"{template_flake_url}\";")
-    template_output_string = f"inputs.{INPUT_TEMPLATE_FLAKE_NAME}." + f"{template_attribute}.config;"
-
-    inputs = '\n    '.join(input_strings)
-    output_appvms = '\n      '.join(output_appvm_strings)
-
-    # Currently we fetch the mkNubeCluster function from the template input
+    # Currently we fetch the mkNubeSystem function from the template input
     # because this allows us to not have to hardcode our own lib input or a separate input.
     # The template will have this function included in it by the wrapper function producing the
     # template output
     flake = Template('''{
   # THIS FILE WAS AUTO-GENERATED BY qixos.Switch IN THE qixos-rebuild LIFECYCLE
+  # The AppVMs of this template each have a flake of their own in ${APPVM_FLAKES_DIR}
   inputs = {
-    ${inputs}
+    ${INPUT_TEMPLATE_FLAKE_NAME}.url = "${template_flake_url}";
   };
 
-  # The template ships the mkNubeClusterWith package from the qixos nix library
-  outputs = inputs: inputs.${INPUT_TEMPLATE_FLAKE_NAME}.${template_attribute}.lib.mkNubeCluster {
-    template = ${template_output_string}
-    apps = {
-      ${output_appvms}
+  # The template ships the mkNubeSystem function from the qixos nix library
+  outputs = inputs:
+    let
+      template = inputs.${INPUT_TEMPLATE_FLAKE_NAME}.${template_attribute};
+    in {
+      nixosConfigurations.template = template.lib.mkNubeSystem template.config;
     };
-  };
 }''').substitute(
-        inputs=inputs,
-        output_appvms=output_appvms,
-        template_output_string=template_output_string,
+        APPVM_FLAKES_DIR=APPVM_FLAKES_DIR,
+        template_flake_url=template_flake_url,
         INPUT_TEMPLATE_FLAKE_NAME=INPUT_TEMPLATE_FLAKE_NAME,
         template_attribute=template_attribute,
     )
 
-    with open(CURRENT_FLAKE_PATH, 'w') as f:
+    os.makedirs(TEMPLATE_FLAKE_DIR, exist_ok=True)
+    with open(TEMPLATE_FLAKE_PATH, 'w') as f:
         f.write(flake)
 
 
@@ -290,27 +332,11 @@ def oom_kills():
     return None
 
 
-def build_and_switch(update_lockfile: bool, standalone: bool):
-    QUBES_HTTP_PROXY_URL = "http://127.0.0.1:8082"
-
+def lock_flake(flake_dir, update_lockfile: bool):
     if update_lockfile:
-        lock_args = [
-            "nix",
-            "flake",
-            "update",
-            "--allow-dirty-locks",
-            "--refresh",
-            "--flake",
-            str(CURRENT_FLAKE_DIR),
-        ]
+        lock_args = ["nix", "flake", "update", "--allow-dirty-locks", "--refresh", "--flake", str(flake_dir)]
     else:
-        lock_args = [
-            "nix",
-            "flake",
-            "lock",
-            "--allow-dirty-locks",
-            str(CURRENT_FLAKE_DIR),
-        ]
+        lock_args = ["nix", "flake", "lock", "--allow-dirty-locks", str(flake_dir)]
 
     try:
         subprocess.run(
@@ -326,21 +352,14 @@ def build_and_switch(update_lockfile: bool, standalone: bool):
     except subprocess.CalledProcessError as err:
         raise NixosRebuildError(f"nix flake lock failed: {err.stderr.decode()}")
 
-    try:
-        log(f"switching to new flake configuration at {CURRENT_FLAKE_DIR}/flake.nix\nThis may take a while...")
-        kills_before = oom_kills()
-        subprocess.run(
-            # We prefer boot over switch here because sometimes we hit 'SwitchInhibitors' that disallow switching.
-            # booting is safer and we will reboot the template (and standalone for now) after this anyway.
-            ["nixos-rebuild", "boot", "--flake", f"{CURRENT_FLAKE_DIR}#template"],
-            check=True,
-            capture_output=True,
-            preexec_fn=prefer_as_oom_victim,
-            env={"https_proxy": QUBES_HTTP_PROXY_URL, "all_proxy": QUBES_HTTP_PROXY_URL, **os.environ} if not standalone else None,
 
-        )
+def run_build(args, what: str, env):
+    """Run a nix build, telling one the kernel killed for memory from one that failed."""
+    kills_before = oom_kills()
+    try:
+        subprocess.run(args, check=True, capture_output=True, preexec_fn=prefer_as_oom_victim, env=env)
     except subprocess.CalledProcessError as err:
-        # The kernel usually takes the nix build rather than nixos-rebuild itself, which
+        # The kernel usually takes the nix build rather than the command we ran, which
         # then exits with an ordinary non-zero status and says nothing about memory. So
         # ask the kernel what it did instead of reading the status.
         kills_after = oom_kills()
@@ -351,10 +370,95 @@ def build_and_switch(update_lockfile: bool, standalone: bool):
         )
         if err.returncode == -signal.SIGKILL or killed:
             raise OomKillerError(
-                "the kernel killed a process for memory while nixos-rebuild ran. Give the "
+                f"the kernel killed a process for memory while {what} ran. Give the "
                 f"template more memory and switch again: {err.stderr.decode()}"
             )
-        raise NixosRebuildError(f"nixos-rebuild failed: {err.stderr.decode()}")
+        raise NixosRebuildError(f"{what} failed: {err.stderr.decode()}")
+
+
+def activate_template():
+    """Bring the running template up to the configuration it was just rebuilt to.
+
+    So that the AppVM builds run with whatever the new configuration provides, split-ssh
+    for fetching private inputs being the example. A refusal is not an error: switch
+    inhibitors turn down a live activation that the next boot accepts, the builds do not
+    depend on it, and an AppVM that did need it fails its own build and nothing else.
+    """
+    result = subprocess.run([f"{SYSTEM_PROFILE}/bin/switch-to-configuration", "test"], capture_output=True)
+    if result.returncode != 0:
+        log(f"could not activate the new template configuration, building the AppVMs without it: {result.stderr.decode()}")
+
+
+def forget_removed_appvms(appvm_names):
+    """Drop what was kept for AppVMs that have left the cluster.
+
+    The out-link is the only thing holding such an AppVM's closure in the store.
+    """
+    for kept in (APPVM_FLAKES_DIR, ACTIVATION_DIR):
+        if not kept.is_dir():
+            continue
+        for entry in kept.iterdir():
+            if entry.name not in appvm_names:
+                shutil.rmtree(entry)
+
+
+def build_and_switch(protocol: ProtocolJson):
+    build_env = {"https_proxy": QUBES_HTTP_PROXY_URL, "all_proxy": QUBES_HTTP_PROXY_URL, **os.environ} if not protocol.standalone else None
+
+    lock_flake(TEMPLATE_FLAKE_DIR, protocol.update_lockfile)
+    log(f"switching to new flake configuration at {TEMPLATE_FLAKE_DIR}/flake.nix\nThis may take a while...")
+    run_build(
+        # We prefer boot over switch here because sometimes we hit 'SwitchInhibitors' that disallow switching.
+        # booting is safer and we will reboot the template (and standalone for now) after this anyway.
+        ["nixos-rebuild", "boot", "--flake", f"{TEMPLATE_FLAKE_DIR}#template"],
+        "nixos-rebuild",
+        build_env,
+    )
+    log("built the template")
+
+    appvms = appvm_sources(protocol)
+    forget_removed_appvms(appvms)
+    if not appvms:
+        return
+
+    activate_template()
+    template_input = locked_template_input()
+
+    # One nix at a time. Each evaluates a whole NixOS system, and several at once is the
+    # memory peak that building them apart is meant to avoid.
+    failed = []
+    out_of_memory = False
+    for name in sorted(appvms):
+        flake_dir = APPVM_FLAKES_DIR / name
+        out_link = ACTIVATION_DIR / name / "nixos"
+        log(f"building AppVM [{name}] from {flake_dir}/flake.nix")
+        try:
+            generate_appvm_flake(name, appvms[name], template_input, protocol.template_flake.output)
+            lock_flake(flake_dir, protocol.update_lockfile)
+            os.makedirs(out_link.parent, exist_ok=True)
+            # A failed build leaves the previous out-link alone, so the AppVM keeps
+            # booting the last closure that did build.
+            run_build(
+                ["nix", "build", f'{flake_dir}#nixosConfigurations."{name}".config.system.build.toplevel', "--out-link", str(out_link)],
+                f"the build of AppVM [{name}]",
+                build_env,
+            )
+            log(f"built AppVM [{name}]")
+        except OomKillerError as e:
+            log(e)
+            failed.append(name)
+            out_of_memory = True
+        except (NixosRebuildError, OSError) as e:
+            log(e)
+            failed.append(name)
+
+    # 17 rather than 18 although the template did switch: the admin gets one status, and
+    # that the template needs more memory is the half someone can act on. The admin
+    # cannot tell this from a kill during the template's own build, so it stops there.
+    if out_of_memory:
+        raise OomKillerError(f"the template switched but ran out of memory building AppVMs: {', '.join(failed)}")
+    if failed:
+        raise AppVmBuildError(f"the template switched but these AppVMs failed to build: {', '.join(failed)}")
 
 
 def main():
@@ -362,9 +466,9 @@ def main():
     log("qixos.Switch starting...")
     try:
         protocol_result = read_protocol()
-        generate_flake(protocol_result)
-        build_and_switch(protocol_result.update_lockfile, protocol_result.standalone)
-        log(f"successfully switched to: {CURRENT_FLAKE_PATH}")
+        generate_template_flake(protocol_result)
+        build_and_switch(protocol_result)
+        log(f"successfully switched to: {TEMPLATE_FLAKE_PATH}")
     except BreakingProtocolError as e:
         log(e)
         sys.exit(e.ERROR_CODE)
@@ -384,6 +488,9 @@ def main():
         log(e)
         sys.exit(e.ERROR_CODE)
     except OomKillerError as e:
+        log(e)
+        sys.exit(e.ERROR_CODE)
+    except AppVmBuildError as e:
         log(e)
         sys.exit(e.ERROR_CODE)
     except Exception as e:

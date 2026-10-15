@@ -12,7 +12,7 @@ import subprocess
 import pytest
 
 from qixos_rebuild.qrexec import qixos_switch
-from qixos_rebuild.qrexec.protocol import NixosRebuildError, OomKillerError
+from qixos_rebuild.qrexec.protocol import Flake, NixosRebuildError, OomKillerError, ProtocolJson
 
 
 def runner(rebuild_returncode):
@@ -31,7 +31,15 @@ def switch(monkeypatch, rebuild_returncode, kills):
     readings = iter(kills)
     monkeypatch.setattr(qixos_switch, "oom_kills", lambda: next(readings))
     monkeypatch.setattr(qixos_switch.subprocess, "run", runner(rebuild_returncode))
-    qixos_switch.build_and_switch(update_lockfile=False, standalone=True)
+    qixos_switch.build_and_switch(ProtocolJson(
+        template_dirname=None,
+        template_flake=Flake(source="github:example/nube", output="qixosStandaloneConfigurations.x"),
+        remote_appvms={},
+        local_appvms={},
+        tar_dirs=[],
+        update_lockfile=False,
+        standalone=True,
+    ))
 
 
 def test_a_kill_during_the_build_is_an_oom_however_nixos_rebuild_exited(monkeypatch):
