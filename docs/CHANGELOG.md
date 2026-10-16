@@ -40,6 +40,15 @@ line was, as in `+63s`. `/var/qixos/switch.log` and the template's journal carry
 gap, and the switch logs a line as the template and each AppVM finishes building, so the
 gap on it is how long that build took.
 
+### Other qubes can reach a nube over qubes.ConnectTCP
+A `qubes.ConnectTCP` call into a nube failed every time: the caller got exit status 127 and
+the nube's journal said `Service not found: qubes.ConnectTCP+<port>`, even with the
+service installed and something listening on the port. `qubes.UpdatesProxy` had the same
+fault for any qube using a nube as its updates proxy. Both now work.
+
+A switch to this version fixes it, for an AppVM once it has rebooted. Calls into a nube
+still need their own line in dom0's qrexec policy, as before.
+
 ## v0.2.0
 
 ### Security

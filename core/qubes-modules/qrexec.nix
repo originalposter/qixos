@@ -19,6 +19,19 @@
     name = "qubes-rpc";
     paths = servicePackages;
     pathsToLink = ["/etc/qubes-rpc" "/etc/qubes/rpc-config"];
+    # A service such as qubes.ConnectTCP is a link to /dev/tcp/<host>, and qrexec spots
+    # one by reading the entry's own link text. buildEnv links each entry to the package's
+    # file instead, which leaves qrexec reading a store path, so these entries are pointed
+    # at /dev/tcp directly.
+    postBuild = ''
+      for entry in $out/etc/qubes-rpc/*; do
+        target=$(readlink "$entry") || continue
+        tcp=$(readlink "$target") || continue
+        case "$tcp" in
+          /dev/tcp/*) ln -sfn "$tcp" "$entry" ;;
+        esac
+      done
+    '';
   };
 in
   with lib; {
