@@ -63,6 +63,40 @@
           builtins.seq
             cluster.nixosConfigurations.template.config.system.build.toplevel.drvPath
             (pkgs.runCommand "template-evaluates-without-its-appvms" { } "touch $out");
+      # qrexec treats a service as TCP, qubes.ConnectTCP for one, only when its entry in
+      # /etc/qubes-rpc is itself a link to /dev/tcp/<host>: it reads that one link and
+      # checks the text, and otherwise stats the path, which /dev/tcp never resolves to.
+      # So no such service may be reached through a second link. Failing on finding none
+      # keeps a green result from meaning nothing was checked.
+      qrexecTcpServicesAreDirectLinks =
+        let
+          nube = self.lib.mkNubeApp {
+            directBuild = { inherit nixpkgs; };
+            modules = [ ];
+          };
+          services = nube.nixosConfigurations.default.config.environment.etc."qubes-rpc".source;
+        in
+          pkgs.runCommand "qrexec-tcp-services-are-direct-links" { } ''
+            found=0
+            for entry in ${services}/*; do
+              first=$(readlink "$entry") || continue
+              case "$first" in
+                /dev/tcp/*) found=$((found + 1)); continue ;;
+              esac
+              second=$(readlink "$first") || continue
+              case "$second" in
+                /dev/tcp/*)
+                  echo "$(basename "$entry") reaches $second only through $first"
+                  exit 1
+                  ;;
+              esac
+            done
+            if [ "$found" -eq 0 ]; then
+              echo "no /dev/tcp service in ${services}"
+              exit 1
+            fi
+            touch $out
+          '';
 
       # install/build-nix-template is its own flake, and the installer builds it as
       # `?dir=install/build-nix-template#rpm`. It cannot be an input here: a `path:` input
