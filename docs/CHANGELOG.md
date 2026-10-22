@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Nubes play audio
+Every nube with the gui agent now runs PipeWire with the Qubes audio module, so sound goes
+to the audio qube (dom0 or sys-audio) the same way it does from a stock Qubes template.
+Applications speaking PulseAudio or ALSA work too.
+
+Set `services.qubes.audio.enable = false` in a nube that should stay silent.
+
+A nube that set up PulseAudio itself (`services.pulseaudio.enable = true`) no longer
+evaluates, since NixOS will not run PulseAudio beside PipeWire's replacement for it.
+Remove that setting, or set `services.qubes.audio.enable = false` to keep your own.
+
 ### A template is built before its AppVMs, and each AppVM on its own
 A switch used to build a template and every AppVM of its cluster as one nix build. It now
 builds the template, activates it, and then builds the AppVMs one after another.
