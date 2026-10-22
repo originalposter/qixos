@@ -13,6 +13,7 @@ final: _prev: {
   qubes-gui-agent-linux = final.callPackage ./qubes-gui-agent-linux {};
   qubes-gui-common = final.callPackage ./qubes-gui-common {};
   qubes-linux-utils = final.callPackage ./qubes-linux-utils {};
+  qubes-pipewire-module = final.callPackage ./qubes-pipewire-module {};
   qubes-usb-proxy = final.callPackage ./qubes-usb-proxy {};
   qixos-switch = (final.callPackage ../qixos-rebuild {}).qixosSwitch;
 }

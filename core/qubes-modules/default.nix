@@ -5,6 +5,7 @@
 {
   imports = [
     ./appmenus.nix
+    ./audio.nix
     ./core.nix
     ./db.nix
     ./gui.nix
