@@ -6,8 +6,6 @@
 # Audio for nubes: PipeWire in the user's session, with Qubes' module carrying playback
 # to the audio qube over vchan and recording back from it. Which qube that is, and
 # whether a microphone is attached at all, is dom0's decision.
-#
-# On wherever the gui agent is, as on a stock Qubes template.
 {
   config,
   lib,
@@ -33,8 +31,7 @@ in {
       configPackages = [module];
     };
 
-    # PipeWire looks for modules in one directory unless told otherwise, and the qubes
-    # one is in a store path of its own.
+    # PipeWire searches only its own module directory unless told otherwise.
     systemd.user.services.pipewire = {
       environment.PIPEWIRE_MODULE_DIR = "${config.services.pipewire.package}/lib/pipewire-0.3:${module}/lib/pipewire-0.3";
       # A root session's pipewire would take the vchan to the audio qube from the user's.

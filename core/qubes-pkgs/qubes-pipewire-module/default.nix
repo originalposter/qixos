@@ -2,9 +2,8 @@
 # Derived from the pipewire/ directory of https://github.com/QubesOS/qubes-gui-agent-linux
 # SPDX-License-Identifier: GPL-2.0-or-later
 #
-# Upstream ships this module from the gui agent's source tree, so it builds from the
-# same source as the gui agent and stays at its version. `unresholved` because resholve
-# wraps the gui agent, and the wrapper's own `src` is the unwrapped build.
+# `unresholved` because resholve wraps the gui agent, and the wrapper's own `src` is the
+# unwrapped build rather than the source.
 {
   stdenv,
   pkg-config,
