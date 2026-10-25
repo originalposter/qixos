@@ -20,13 +20,13 @@
 }:
 resholve.mkDerivation rec {
   pname = "qubes-core-qrexec";
-  version = "4.2.21";
+  version = "4.2.25";
 
   src = fetchFromGitHub {
     owner = "QubesOS";
     repo = pname;
     rev = "v${version}";
-    hash = "sha256-an/jvcVJoCjhlcaWvf3pJbEukg9yei8oUoCvDkMiYKk=";
+    hash = "sha256-+iS13bwyi/C79pgjwEaJUGFtb+Z2y47y720wpnVfE20=";
   };
 
   nativeBuildInputs = [
