@@ -60,6 +60,9 @@ fault for any qube using a nube as its updates proxy. Both now work.
 A switch to this version fixes it, for an AppVM once it has rebooted. Calls into a nube
 still need their own line in dom0's qrexec policy, as before.
 
+### The qrexec agent is updated to 4.2.25
+Every nube's qrexec agent moves from 4.2.21 to 4.2.25, on the same Qubes 4.2 branch.
+
 ## v0.2.0
 
 ### Security
