@@ -1,8 +1,7 @@
 # QixOS
-Qubes with Nix - the security and compartmentalization of QubesOS plus the configurability, shareability and packages of Nix
+Qubes with Nix - the security and compartmentalization of QubesOS plus the configurability, shareability and packages of NixOS.
 
 QixOS is a combination of QubesOS and NixOS. It is installed inside of QubesOS as an extension and provides tooling for managing your system with nix configurations.
-QixOS makes some opinionated architectural decisions which are meant to increase security and improve ergonomics.
 There is a [sister community repository](https://github.com/originalposter/qixos-community) where users can share their nube (nix qube) configurations.
 
 *Status: Public alpha. Expect that things are buggy and unstable. Don't use for security critical tasks*
@@ -11,7 +10,7 @@ There is a [sister community repository](https://github.com/originalposter/qixos
 You install QixOS as an extension of QubesOS.
 It is managed through a qixos admin VM which is able to create other QixOS VMs.
 No QixOS VM has access to your other Qubes VMs except for the ability to send network traffic through `sys-net`.
-To see how to install QixOS look in the `./install/INSTALL.md` file.
+To see how to install QixOS look in [`install/INSTALL.md`](install/INSTALL.md).
 
 # Where can I read more?
 - [VISION](docs/VISION.md) - lays out the high-level vision of the project and talks about what QixOS can achieve.
@@ -33,24 +32,15 @@ Especially with a focus on the security of the project. Hopefully this can give 
 # Features
 - NixOS templates on QubesOS.
 - `qixos-rebuild` tool which lets you configure your QixOS VMs using a `.nix` flake.
-- Improves template security with space-time security concept. See `docs/VISION.md` for details.
+- Improves template security with space-time security. See `docs/VISION.md` for details.
 - Lets AppVMs configure their own root filesystem instead of having to go through `bind-dirs` and `/rw`.
 - Combines the modularity of QubesOS VMs with the modularity of NixOS modules.
 - Community repository which lets QixOS users share their VM setups in a modular way.
-
-## Anti-features/tradeoffs
-- Templates are dependent on the NixOS configuration of all AppVMs that depend on them. Templates and all AppVMs can see the entire `/nix/store` and nix config of all other dependent AppVMs. As long as you don't store secrets in `/nix/store` or are using security by obscurity it should not be a problem.
 
 # Community
 - https://github.com/originalposter/qixos-community - community repository where you may upload your own configurations and download others configs
 - https://discord.gg/HKS9GDena - discord server where you can bring your questions in order to get fast feedback
 - https://forum.qubes-os.org - QubesOS forum for finding other Qubes enthusiasts and discussing Qubes
-
-# Known issues and limitations
-There are some important limitations in the alpha, this is not an exhaustive list and for a more up-to-date view use the issue tracker.
-- Currently disposable VMs have not been tested.
-- Currently not all VM properties can be set. Diskspace for example must be set through normal qubes means
-- Currently StandaloneVMs will not resize their disk automatically.
 
 # Contributing
 The way to contribute will evolve as this project grows. Currently the most desired contribution is feedback.
@@ -98,7 +88,7 @@ under GPL-2.0-or-later. The original MIT permission notice is retained at
 [install/build-nix-template/LICENSE](install/build-nix-template/LICENSE) and applies
 to all evq-derived code in this repository.
 
-# OP's pgp fingerprint
+# op's pgp fingerprint
 Full key can be found under `testaments/pubkeys/op.asc`
 ```
 6FF0D321E958C33A1EF830F6A887CDDA93F1699A
