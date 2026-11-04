@@ -63,6 +63,17 @@ still need their own line in dom0's qrexec policy, as before.
 ### The qrexec agent is updated to 4.2.25
 Every nube's qrexec agent moves from 4.2.21 to 4.2.25, on the same Qubes 4.2 branch.
 
+### Bug fixes
+- **A nube stays reachable after a process is killed for memory.** When the kernel
+  killed a process started over qrexec for memory, a nix build in `qixos.Switch` for
+  instance, systemd stopped the qrexec agent with it, and the qube answered no qrexec
+  call until it was restarted. The next switch of such a template failed with a
+  `BrokenPipeError` and no error code. The agent now keeps running.
+- **An AppVM's first boot no longer reports its switch failed.**
+  `qixos-appvm-switch.service` sometimes failed with status 4 on boot, although the
+  AppVM had switched to its own configuration. The console login now waits for the
+  switch to finish, which removes the race.
+
 ## v0.2.0
 
 ### Security
