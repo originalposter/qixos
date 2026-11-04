@@ -89,6 +89,10 @@ in
           ExecStartPre = "${pkgs.coreutils}/bin/mkdir -p /var/log/qubes";
           ExecStart = "${pkgs.qubes-core-qrexec}/lib/qubes/qrexec-agent";
           KillMode = "process";
+          # Every qrexec call runs in this unit's cgroup, so with the default `stop` one
+          # OOM-killed call, such as a nix build in qixos.Switch, takes the agent down and
+          # the qube is unreachable over qrexec until it reboots.
+          OOMPolicy = "continue";
           # FIXME: Does SELinux makes sense here?
           SELinuxContext = "system_u:system_r:local_login_t:s0-s0:c0.c1023";
         };
