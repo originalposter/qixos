@@ -148,8 +148,18 @@ in
     # user session starts. This is only a preference: the session is usually already up by
     # the time we run, which is exactly why the user side of the switch is done inline at
     # the end of the activation script rather than from a second unit. See NOTE Serpent V.
+    #
+    # And before user-runtime-dir@1000.service, which creates /run/user/1000. s-t-c takes
+    # that directory to mean the user's manager is running and reloads its units through
+    # the bus inside it. Without this the directory appears as soon as the console
+    # autologin (services.getty.autologinUser in core.nix, on tty1 and hvc0) opens its
+    # session, while user@1000 is still held back behind us, and an s-t-c reaching its
+    # user step in that window finds no bus and exits 4, although the system side of the
+    # switch succeeded. That login now waits for the switch, which cannot deadlock: the
+    # gettys are already started by then, and nothing before default.target waits on a
+    # login.
     after = [ "qubes-db.service" "default.target" ];
-    before = [ "user@1000.service" ];
+    before = [ "user@1000.service" "user-runtime-dir@1000.service" ];
     requires = [ "qubes-db.service" ];
     wantedBy = [ "default.target" ];
 
