@@ -148,8 +148,13 @@ in
     # user session starts. This is only a preference: the session is usually already up by
     # the time we run, which is exactly why the user side of the switch is done inline at
     # the end of the activation script rather than from a second unit. See NOTE Serpent V.
+    #
+    # Before user-runtime-dir@1000.service too: s-t-c takes /run/user/1000 to mean a
+    # running user manager, and with the console autologin creating it while user@1000
+    # waits on us, s-t-c finds no bus and exits 4. The login waiting on the switch cannot
+    # deadlock, since nothing before default.target waits on a login.
     after = [ "qubes-db.service" "default.target" ];
-    before = [ "user@1000.service" ];
+    before = [ "user@1000.service" "user-runtime-dir@1000.service" ];
     requires = [ "qubes-db.service" ];
     wantedBy = [ "default.target" ];
 
