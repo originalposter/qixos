@@ -253,6 +253,10 @@ in
         rm "$out/etc/qubes-rpc/qubes.VMExecGUI"
 
         mv "$out/usr/bin/qubes-vmexec" "$out/bin/"
+        ${lib.optionalString enableNetworking ''
+          # The firewall daemon's launcher, written by setup.py beside qubes-vmexec's.
+          mv "$out/usr/bin/qubes-firewall" "$out/bin/"
+        ''}
         mv "$out/usr/share" "$out/share"
         mv "$out/etc/systemd/system/xendriverdomain.service" "$out/lib/systemd/system/"
 
@@ -292,6 +296,20 @@ in
         for path in lib/qubes/init/network-uplink-wait.sh lib/qubes/setup-ip lib/qubes/update-proxy-configs ; do
           substituteInPlace "$out/$path" --replace '/usr/lib/qubes/init/functions' "functions"
         done
+
+        # The netvm side's hardcoded /usr and /sbin paths. $out is the unresholved output,
+        # which the resholved one keeps as a dependency.
+        substituteInPlace "$out/lib/qubes/init/network-proxy-setup.sh" \
+          --replace-fail '/usr/lib/qubes/init/functions' "$out/lib/qubes/init/functions" \
+          --replace-fail '/usr/lib/qubes/qubes-setup-dnat-to-ns' "$out/lib/qubes/qubes-setup-dnat-to-ns"
+        # qubes-iptables wants nft at /sbin/nft and its rules in /etc/qubes.
+        substituteInPlace "$out/lib/qubes/init/qubes-iptables" \
+          --replace-fail '/sbin/$IPTABLES' '${nftables}/bin/$IPTABLES' \
+          --replace-fail 'IPTABLES_DATA_DIR=/etc/qubes' "IPTABLES_DATA_DIR=$out/etc/qubes"
+        # Used with the harden-network-interfaces qubes service on.
+        substituteInPlace "$out/etc/xen/scripts/vif-route-qubes" \
+          --replace-fail '/usr/lib/systemd/systemd-sysctl' '${systemd}/lib/systemd/systemd-sysctl' \
+          --replace-fail '/etc/sysctl.d/81-qubes.conf.optional' "$out/etc/sysctl.d/81-qubes.conf.optional"
 
         cat >> "$out/lib/qubes/update-proxy-configs" <<EOT
 
@@ -408,15 +426,30 @@ in
 
     dontWrapGApps = true;
 
-    preFixup = ''
-      makeWrapperArgs+=("''${gappsWrapperArgs[@]}")
+    preFixup =
+      ''
+        makeWrapperArgs+=("''${gappsWrapperArgs[@]}")
 
-      wrapProgram "$out/etc/qubes-rpc/qubes.StartApp" \
-        --prefix PYTHONPATH : "${lib.concatMapStringsSep ":" (p: "${p}/${python3.sitePackages}") pythonPath}:$out/${python3.sitePackages}"
-    '';
+        agentPythonPath="${lib.concatMapStringsSep ":" (p: "${p}/${python3.sitePackages}") pythonPath}:$out/${python3.sitePackages}"
+        wrapProgram "$out/etc/qubes-rpc/qubes.StartApp" --prefix PYTHONPATH : "$agentPythonPath"
+      ''
+      # Imports dbus and qubesdb, and lives outside bin, where wrapPythonPrograms looks.
+      + lib.optionalString enableNetworking ''
+        wrapProgram "$out/lib/qubes/qubes-setup-dnat-to-ns" --prefix PYTHONPATH : "$agentPythonPath"
+      '';
 
+    # wrapPythonPrograms leaves its site list empty in this derivation, cause unknown, so
+    # the programs in bin could not import qubesagent. Filled in here rather than exported
+    # as PYTHONPATH, which qubes-vmexec would pass on to every program it runs.
     postFixup = ''
       wrapPythonPrograms
+
+      IFS=: read -ra siteDirs <<< "$agentPythonPath"
+      sites=$(printf "'%s'," "''${siteDirs[@]}")
+      for wrapped in "$out"/bin/.*-wrapped; do
+        substituteInPlace "$wrapped" --replace-fail \
+          "site.addsitedir(p, k), [], " "site.addsitedir(p, k), [$sites], "
+      done
     '';
 
     meta = with lib; {

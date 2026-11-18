@@ -50,6 +50,22 @@ def _set_netvm(app: QubesBase, desired_netvm: str | None, curr_vm: QubesVM):
     print(f"  '{curr_vm.name}': netvm {old_netvm} -> {desired_netvm}")
 
 
+def _netvm_at_creation(desired_netvm: str | None) -> str | None:
+    """The netvm a qube is created with: none in place of a named one.
+
+    A named netvm waits for the reconcile pass. dom0 refuses a netvm that does not
+    provide network, and a nube providing it is only given providesNetwork there, after
+    every create; the netvm may also be another qube this apply has not created yet.
+
+    None rather than what the qube would start with (the qubes default for a new AppVM,
+    the base template's netvm for a clone), so an apply that dies before the reconcile
+    pass leaves the qube off the network rather than on a netvm meant for another qube.
+    """
+    if desired_netvm in (None, QUBES_DEFAULT, QUBES_NONE):
+        return desired_netvm
+    return QUBES_NONE
+
+
 def rename_vm(
     app: QubesBase,
     from_name: str,
@@ -93,7 +109,7 @@ def create_template_vm(
     )
     # TODO: Set properties
     vm.label = app.get_label(nube_cluster.template.properties.label)
-    _set_netvm(app, nube_cluster.template.properties.netvm, vm)
+    _set_netvm(app, _netvm_at_creation(nube_cluster.template.properties.netvm), vm)
     mark_delete_on_removal(tmpl_name, nube_cluster.template.delete_on_removal)
 
 
@@ -112,7 +128,7 @@ def create_vm(
     )
 
     # TODO: Set properties
-    _set_netvm(app, vm_config.properties.netvm, vm)
+    _set_netvm(app, _netvm_at_creation(vm_config.properties.netvm), vm)
 
     mark_delete_on_removal(vm_name, vm_config.delete_on_removal)
 
@@ -138,7 +154,7 @@ def create_standalone_vm(
     )
     # TODO: Set properties
     vm.label = app.get_label(vm_config.properties.label)
-    _set_netvm(app, vm_config.properties.netvm, vm)
+    _set_netvm(app, _netvm_at_creation(vm_config.properties.netvm), vm)
     mark_delete_on_removal(vm_name, vm_config.delete_on_removal)
 
 
@@ -202,13 +218,17 @@ def reconcile_vms(app: QubesBase, reconcile_diff: ReconcileDiff):
                 # at parse time.
                 setattr(curr_vm, prop, _qubes_value(desired))
 
-    # Set netvm
-    for vm_name, update_prop in reconcile_diff.properties.items():
-        prop = "netvm"
-        if prop in update_prop:
-            curr_vm = app.domains[vm_name]
-            desired = update_prop[prop]
-            _set_netvm(app, desired, curr_vm)
+    # Set netvm, halted qubes first. Assigning a netvm to a running qube starts it, and a
+    # netvm started before its own netvm is set boots without an uplink, so every halted
+    # qube in a chain of netvms is wired before anything can start it.
+    netvm_changes = [
+        (vm_name, update_prop["netvm"])
+        for vm_name, update_prop in reconcile_diff.properties.items()
+        if "netvm" in update_prop
+    ]
+    netvm_changes.sort(key=lambda change: app.domains[change[0]].is_running())
+    for vm_name, desired in netvm_changes:
+        _set_netvm(app, desired, app.domains[vm_name])
 
     # Set delete_on_removal
     for vm_name, delete_on_removal in reconcile_diff.delete_on_removal.items():
@@ -255,7 +275,8 @@ def apply(app: QubesBase, config: QixosConfig, base_template: str, qixos_config_
     # Recomputed rather than reusing vm_changes.reconcile_diff, which was calculated
     # before the creates above and therefore skips every VM this run made: those VMs are
     # not in `managed` yet, so their properties would only be applied by the next apply.
-    # Creation sets label, netvm and deleteOnRemoval; everything else arrives here.
+    # Creation sets label, deleteOnRemoval and a netvm of none or the default; everything
+    # else arrives here, a named netvm included.
     managed = get_managed_vms(app, config.management_tag)
     reconcile_vms(app, state.calculate_reconcile_diffs(
         app, managed, config.nube_clusters, config.standalone_nubes,

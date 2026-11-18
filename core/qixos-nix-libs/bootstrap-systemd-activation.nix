@@ -107,6 +107,14 @@ let
         || echo "WARNING: could not start user default.target for $user"
     }
 
+    # A standalone boots its own configuration, so it has nothing to switch to and succeeds,
+    # meaning what success means on an AppVM. Full persistence is only ever a template's
+    # or a standalone's, and templates never run this unit.
+    if [ -e /run/qubes/persistent-full ]; then
+      echo "standalone: already running its own configuration"
+      exit 0
+    fi
+
     # A DispVM's own name is randomly generated, so it matches no configuration. The one it
     # should boot belongs to the AppVM it was made from, which is what /qubes-base-template
     # names for a DispVM, the same key naming the TemplateVM for an AppVM.
