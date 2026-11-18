@@ -60,10 +60,11 @@ in {
     services.resolved.enable = true;
 
     # qubes owns this file and nixos must not claim it. `setup-ip` writes the nameservers
-    # from qubesdb into it at boot, deleting whatever symlink it finds there first, and
-    # resolved reads them back out of it as its upstream servers. Declaring it here would
-    # make every activation restore the symlink, which leaves resolved with no upstreams
-    # at all: the qube keeps its addresses and its routes and resolves nothing.
+    # from qubesdb into it at boot, deleting whatever symlink it finds there first. resolved
+    # does not read it (setup-ip gives resolved the same servers with resolvectl), but
+    # whatever skips NSS does: dig, Go and musl programs, and glibc while resolved is not
+    # running. Declaring it here would make every activation restore the symlink to
+    # resolved's own stub, sending those to resolved too.
     #
     # A reboot is what hides this. `setup-ip` runs after activation at boot, so it wins
     # there, and its unit is a oneshot that has already exited by the time anyone runs
