@@ -107,6 +107,16 @@ let
         || echo "WARNING: could not start user default.target for $user"
     }
 
+    # A standalone boots its own configuration directly, so there is nothing to switch to and
+    # this unit's success means what it means on an AppVM: the qube runs its own config.
+    # qubes-sysinit marks full persistence, which dom0 gives only updateable qubes; templates
+    # are already excluded by this unit's condition, so this leaves standalones, never an
+    # AppVM whose closure is missing.
+    if [ -e /run/qubes/persistent-full ]; then
+      echo "standalone: already running its own configuration"
+      exit 0
+    fi
+
     # A DispVM's own name is randomly generated, so it matches no configuration. The one it
     # should boot belongs to the AppVM it was made from, which is what /qubes-base-template
     # names for a DispVM, the same key naming the TemplateVM for an AppVM.
