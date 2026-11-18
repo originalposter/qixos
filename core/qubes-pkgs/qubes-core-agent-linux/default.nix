@@ -254,8 +254,7 @@ in
 
         mv "$out/usr/bin/qubes-vmexec" "$out/bin/"
         ${lib.optionalString enableNetworking ''
-          # setup.py writes the firewall daemon's launcher beside qubes-vmexec's, and
-          # usr/bin is about to go. In bin it gets the agent's Python path, set below.
+          # The firewall daemon's launcher, written by setup.py beside qubes-vmexec's.
           mv "$out/usr/bin/qubes-firewall" "$out/bin/"
         ''}
         mv "$out/usr/share" "$out/share"
@@ -298,20 +297,16 @@ in
           substituteInPlace "$out/$path" --replace '/usr/lib/qubes/init/functions' "functions"
         done
 
-        # The netvm side, run where dom0 has made this qube a netvm (networking.nix). The
-        # /usr and /sbin paths these scripts hardcode are rewritten here; their units put
-        # the rest of their commands on PATH. ($out is the unresholved output, kept as a
-        # dependency of the resholved one, so references into it stay valid.)
+        # The netvm side's hardcoded /usr and /sbin paths. $out is the unresholved output,
+        # which the resholved one keeps as a dependency.
         substituteInPlace "$out/lib/qubes/init/network-proxy-setup.sh" \
           --replace-fail '/usr/lib/qubes/init/functions' "$out/lib/qubes/init/functions" \
           --replace-fail '/usr/lib/qubes/qubes-setup-dnat-to-ns' "$out/lib/qubes/qubes-setup-dnat-to-ns"
-        # qubes-iptables refuses to start unless nft is at /sbin/nft, and reads its rules
-        # from /etc/qubes, where nothing on NixOS puts them.
+        # qubes-iptables wants nft at /sbin/nft and its rules in /etc/qubes.
         substituteInPlace "$out/lib/qubes/init/qubes-iptables" \
           --replace-fail '/sbin/$IPTABLES' '${nftables}/bin/$IPTABLES' \
           --replace-fail 'IPTABLES_DATA_DIR=/etc/qubes' "IPTABLES_DATA_DIR=$out/etc/qubes"
-        # Only with the harden-network-interfaces qubes service on, which then fails every
-        # downstream interface without these.
+        # Used with the harden-network-interfaces qubes service on.
         substituteInPlace "$out/etc/xen/scripts/vif-route-qubes" \
           --replace-fail '/usr/lib/systemd/systemd-sysctl' '${systemd}/lib/systemd/systemd-sysctl' \
           --replace-fail '/etc/sysctl.d/81-qubes.conf.optional' "$out/etc/sysctl.d/81-qubes.conf.optional"
@@ -438,17 +433,14 @@ in
         agentPythonPath="${lib.concatMapStringsSep ":" (p: "${p}/${python3.sitePackages}") pythonPath}:$out/${python3.sitePackages}"
         wrapProgram "$out/etc/qubes-rpc/qubes.StartApp" --prefix PYTHONPATH : "$agentPythonPath"
       ''
-      # Run by setup-ip and network-proxy-setup.sh on a netvm, and imports dbus and
-      # qubesdb. wrapPythonPrograms only wraps what is in bin, so the interpreter
-      # patchShebangs gives it finds neither.
+      # Imports dbus and qubesdb, and lives outside bin, where wrapPythonPrograms looks.
       + lib.optionalString enableNetworking ''
         wrapProgram "$out/lib/qubes/qubes-setup-dnat-to-ns" --prefix PYTHONPATH : "$agentPythonPath"
       '';
 
-    # wrapPythonPrograms leaves the site list it writes into each program in bin empty
-    # in this derivation, so they cannot import qubesagent; the cause is not known.
-    # Filled in afterwards rather than exported as PYTHONPATH, which qubes-vmexec would
-    # hand on to every program it runs.
+    # wrapPythonPrograms leaves its site list empty in this derivation, cause unknown, so
+    # the programs in bin could not import qubesagent. Filled in here rather than exported
+    # as PYTHONPATH, which qubes-vmexec would pass on to every program it runs.
     postFixup = ''
       wrapPythonPrograms
 

@@ -11,20 +11,13 @@
 with lib; let
   pkg = config.services.qubes.core.package;
 
-  # A condition met only on a qube dom0 has made a netvm, which qubes-sysinit marks
-  # before sysinit.target (ProxyVM with a netvm of its own, NetVM without). Gating on it
-  # at runtime, rather than on an inner-config option, keeps providesNetwork the one
-  # switch and keeps these units out of the window where an AppVM still runs its
-  # template's closure. Upstream starts qubes-antispoof and qubes-iptables on every
-  # qube; gated here too, so a nube that serves nothing keeps the firewall it had.
-  # Read at boot, so a nube given providesNetwork while it runs serves nothing until it
-  # restarts.
+  # Met only on a qube dom0 has made a netvm (providesNetwork), which qubes-sysinit marks
+  # before sysinit.target, so providesNetwork is the one switch. Read at boot: a nube given
+  # providesNetwork while it runs serves nothing until it restarts.
   onNetvm = ["|/run/qubes/this-is-netvm" "|/run/qubes/this-is-proxyvm"];
 
-  # A NixOS nftables ruleset that flushes everything on each load (a raw `ruleset` does
-  # by default) also clears the netvm's tables: anti-spoofing, per-interface entries and
-  # every downstream's rules. A netvm cannot recover from that without its downstreams
-  # reconnecting, so such a nube refuses to forward at all.
+  # A ruleset that flushes everything on load also clears the netvm's tables, which cannot
+  # be restored without the downstreams reconnecting, so such a nube refuses to forward.
   nftablesFlushes = config.networking.nftables.enable && config.networking.nftables.flushRuleset;
   refuseForwarding = pkgs.writeShellScript "qubes-network-refuse" ''
     echo "not forwarding: networking.nftables.flushRuleset would clear this netvm's rules." >&2
@@ -34,20 +27,12 @@ with lib; let
     exit 1
   '';
 
-  # The forwarding gate. There are times a netvm would otherwise forward downstream
-  # traffic without the firewall it is meant to have: most notably before the AppVM
-  # switch, when it runs its template's configuration and none of its own (a VPN tunnel
-  # and its kill switch, say), and whenever the firewall daemon is not running, since
-  # its per-qube rules go with it. Stock Qubes forwards in that case: a dead daemon
-  # leaves forwarding on with its rules gone. ip_forward cannot be relied on to stop
-  # either, since other software on the nube may turn it on.
-  #
-  # So one rule drops everything that arrives on a downstream interface (vif-route-qubes
-  # puts each in interface group 2) and would be routed on, in front of everything else
-  # forwarding depends on. qixos-forwarding-gate below opens it once the firewall daemon
-  # runs every downstream's rules and the nube runs its own configuration, and it closes
-  # whenever either stops. Loading this file closes it, from whatever state; opening it
-  # flushes the chain.
+  # The forwarding gate: drops everything arriving on a downstream interface (group 2, set
+  # by vif-route-qubes) that would be forwarded. Without it a netvm forwards without the
+  # firewall it is meant to have before its AppVM switch, while it still runs its
+  # template's configuration and none of its own, and while the firewall daemon is down,
+  # where stock Qubes keeps forwarding. ip_forward is no guard: other software may turn it
+  # on. Opened by qixos-forwarding-gate below. Loading this file closes it from any state.
   gateClosed = pkgs.writeText "qixos-forwarding-gate-closed.nft" ''
     table inet qixos-forwarding-gate {
       chain forward {
@@ -57,9 +42,8 @@ with lib; let
     flush chain inet qixos-forwarding-gate forward
     add rule inet qixos-forwarding-gate forward iifgroup 2 counter drop
   '';
-  # Closing also removes the flowtable vif-route-qubes offloads established connections
-  # into, since an offloaded connection skips the forward hook the gate sits in. The next
-  # downstream to come up adds it back.
+  # Also ends offloaded connections, which bypass the forward hook. vif-route-qubes adds
+  # the flowtable back for the next downstream.
   closeGate = pkgs.writeShellScript "qixos-forwarding-gate-close" ''
     ${pkgs.nftables}/bin/nft -f ${gateClosed}
     ${pkgs.nftables}/bin/nft delete table inet qubes-nat-accel 2>/dev/null || true
@@ -116,11 +100,8 @@ in {
     # ensure that dhcpcd doesn't conflict with the qubes network configuration
     networking.dhcpcd.enable = false;
 
-    # The netvm side, for qubes that route others' traffic. Every unit below is upstream's,
-    # installed by the package's `make install-netvm`; what is set here is that it starts
-    # and where its commands are. Anti-spoofing and the base rules come first. Then the
-    # firewall daemon and forwarding, and beside them the backend for the downstream
-    # qubes' interfaces.
+    # The netvm side. The units are upstream's (make install-netvm); what is set here is
+    # that they start, and where their commands are.
 
     systemd.services.qubes-antispoof = {
       wantedBy = ["multi-user.target"];
@@ -128,8 +109,7 @@ in {
       after = ["nftables.service"];
       unitConfig.ConditionPathExists = onNetvm;
       serviceConfig.ExecStart = ["" "${pkgs.nftables}/bin/nft -f ${pkg}/etc/qubes/qubes-antispoof.nft"];
-      # The forwarding gate starts closed, before xendriverdomain, which requires this
-      # unit, can bring up any downstream interface.
+      # The gate starts closed, before xendriverdomain can bring up a downstream interface.
       serviceConfig.ExecStartPost = closeGate;
     };
 
@@ -142,52 +122,33 @@ in {
       serviceConfig.ExecStart = ["" "${pkg}/lib/qubes/init/qubes-iptables start"];
     };
 
-    # Applies each downstream qube's firewall rules, which dom0 writes into this qube's
-    # qubesdb. Without it every downstream qube's rules are silently ignored: dom0 shows
-    # them as set, and nothing tells the qube they are not enforced. Gated by upstream on
-    # the qubes-firewall service, which qubes-sysinit turns on for a netvm.
-    #
-    # conntrack because after applying a qube's rules the daemon drops that qube's now
-    # disallowed connections. Without it that call raises OSError, which its watch loop
-    # takes for a termination signal: it deletes every rule and exits. (It also tries to
-    # notify the user of a failed rule through runuser, against a hardcoded /usr PATH
-    # that has no notify-send on NixOS; the failure is in its journal regardless.)
+    # Applies each downstream's qvm-firewall rules from qubesdb; without it they go
+    # silently unenforced. conntrack: after applying rules the daemon drops connections
+    # they no longer allow, and without conntrack it exits instead, deleting its rules.
     #
     # A VPN netvm's kill switch belongs in /rw/config/qubes-firewall-user-script or
-    # /rw/config/qubes-firewall.d, as on stock Qubes: the daemon runs those before it
-    # reports ready, and nothing is forwarded before then. /rw is there from the first
-    # moment of boot, whichever configuration is running.
+    # /rw/config/qubes-firewall.d, as on stock Qubes: the daemon runs them before it
+    # reports ready, so before forwarding starts.
     systemd.services.qubes-firewall = {
       wantedBy = ["multi-user.target"];
       path = [pkgs.conntrack-tools pkgs.nftables];
       serviceConfig.ExecStart = ["" "${pkg}/bin/qubes-firewall"];
     };
 
-    # Turns forwarding on. Gated by upstream on the qubes-network service, which
-    # qubes-sysinit turns on for a netvm.
+    # Turns forwarding on, bound to the firewall daemon: upstream only orders it after the
+    # daemon, so stock Qubes keeps forwarding with no per-qube rules once the daemon exits.
+    # Here a dead daemon stops forwarding until the next activation or reboot.
     #
-    # bindsTo the firewall daemon, so forwarding runs only while the daemon does. The
-    # daemon deletes its per-qube rules when it exits and the base rules under them
-    # forward everything. Upstream only orders this unit after it, so on stock Qubes a
-    # daemon that exits leaves every downstream forwarded with no rules. Here a netvm
-    # whose daemon died serves nothing until the next activation or reboot starts both
-    # again.
+    # Known issue: a daemon that exits on its own deletes its rules a moment, normally well
+    # under a second, before systemd stops forwarding. Closing that would mean patching
+    # upstream's daemon. Stopping it through systemd stops forwarding first.
     #
-    # Known issue: a daemon that exits on its own deletes its rules before systemd sees
-    # it gone, so for that moment, normally well under a second, downstream traffic is
-    # forwarded without them. Stopping it through systemd has no such gap, since upstream
-    # orders it before this unit and forwarding stops first; a killed daemon never
-    # deletes its rules. Closing it would mean patching upstream's daemon.
-    #
-    # requires anti-spoofing and the base rules too (upstream fails them via
-    # network-pre.target), without which it would forward with no masquerade and let
-    # downstreams spoof each other.
+    # Requires anti-spoofing and the base rules, which upstream gets via network-pre.target.
     systemd.services.qubes-network = {
       wantedBy = ["multi-user.target"];
       bindsTo = ["qubes-firewall.service"];
       requires = ["qubes-antispoof.service" "qubes-iptables.service"];
-      # Every start of forwarding tries to open the gate; it waits for the nube's own
-      # configuration, which this unit cannot be ordered after (see qixos-forwarding-gate).
+      # Opens the gate whenever forwarding starts; see qixos-forwarding-gate.
       wants = ["qixos-forwarding-gate.service"];
       path = [pkgs.kmod pkgs.nftables pkgs.qubes-core-qubesdb];
       serviceConfig = {
@@ -197,17 +158,10 @@ in {
       };
     };
 
-    # Opens the forwarding gate once forwarding is up and the nube runs its own
-    # configuration. Until the AppVM switch, an AppVM runs its template's closure, which
-    # carries the netvm side but none of the nube's own config, a VPN tunnel say. A switch
-    # that fails, a missing build included, leaves the gate closed and the downstreams
-    # with nothing. A standalone's switch succeeds at once; a template never gets here.
-    #
-    # A unit of its own because qubes-network cannot be ordered after the switch: the
-    # switch runs after default.target, which is ordered after what multi-user.target
-    # wants, qubes-network included. Bound to qubes-network, so it closes with it, and
-    # pulled in by it, so it reopens when forwarding starts again; on a later activation
-    # the switch is still active and it reopens at once.
+    # Opens the gate once forwarding is up and the nube runs its own configuration, after
+    # the AppVM switch; a switch that fails leaves it closed. A unit of its own because
+    # qubes-network cannot be ordered after the switch, which runs after default.target,
+    # without a cycle.
     systemd.services.qixos-forwarding-gate = {
       description = "Open the netvm's forwarding gate";
       bindsTo = ["qubes-network.service"];
@@ -222,8 +176,7 @@ in {
       };
     };
 
-    # A ruleset that flushes everything on load also removes the gate. Declared there too,
-    # so each load puts it back closed; such a nube refuses to forward anyway.
+    # A flushing ruleset removes the gate too, so it is declared there, closed.
     networking.nftables.tables = mkIf nftablesFlushes {
       qixos-forwarding-gate = {
         family = "inet";
@@ -236,17 +189,13 @@ in {
       };
     };
 
-    # `xl devd` (ExecStart from core.nix) is the backend for each downstream's interface,
-    # running the hotplug script that brings one up and adds its address to the
-    # anti-spoofing set, hence after that set exists. Not after forwarding: qrexec.nix
-    # orders the qrexec agent after this unit and dom0 counts the qube started once the
-    # agent connects, so waiting on the firewall daemon here would hold the qube's start
-    # behind it, and nothing is forwarded before qubes-network anyway. The hotplug
-    # script, vif-route-qubes, runs with this unit's PATH plus xen's own directories.
+    # `xl devd` is the backend for each downstream interface. Its hotplug script,
+    # vif-route-qubes, adds the address to the anti-spoofing set, hence after it. Not
+    # after forwarding: qrexec.nix orders the qrexec agent after this unit, and dom0 counts
+    # the qube started once the agent connects.
     systemd.services.xendriverdomain = {
       wantedBy = ["multi-user.target"];
-      # Required, not only ordered, so a missing set fails here rather than in each
-      # downstream's hotplug, where nothing reports it.
+      # Required, so a missing set fails here rather than in each hotplug.
       requires = ["qubes-antispoof.service" "qubes-iptables.service"];
       after = ["qubes-antispoof.service" "qubes-iptables.service"];
       unitConfig.ConditionPathExists = onNetvm;

@@ -107,11 +107,9 @@ let
         || echo "WARNING: could not start user default.target for $user"
     }
 
-    # A standalone boots its own configuration directly, so there is nothing to switch to and
-    # this unit's success means what it means on an AppVM: the qube runs its own config.
-    # qubes-sysinit marks full persistence, which dom0 gives only updateable qubes; templates
-    # are already excluded by this unit's condition, so this leaves standalones, never an
-    # AppVM whose closure is missing.
+    # A standalone boots its own configuration, so it has nothing to switch to and succeeds,
+    # meaning what success means on an AppVM. Full persistence is only ever a template's
+    # or a standalone's, and templates never run this unit.
     if [ -e /run/qubes/persistent-full ]; then
       echo "standalone: already running its own configuration"
       exit 0

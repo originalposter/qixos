@@ -218,11 +218,9 @@ def reconcile_vms(app: QubesBase, reconcile_diff: ReconcileDiff):
                 # at parse time.
                 setattr(curr_vm, prop, _qubes_value(desired))
 
-    # Set netvm, halted qubes first. Pointing a running qube at a netvm starts that
-    # netvm, and one started before its own netvm is set boots without an uplink, which
-    # dom0 also tells it makes it a NetVM rather than a ProxyVM. Only a running qube's
-    # assignment starts anything, so once every halted qube has its netvm, whatever a
-    # later assignment starts is already wired, however long the chain of netvms.
+    # Set netvm, halted qubes first. Assigning a netvm to a running qube starts it, and a
+    # netvm started before its own netvm is set boots without an uplink, so every halted
+    # qube in a chain of netvms is wired before anything can start it.
     netvm_changes = [
         (vm_name, update_prop["netvm"])
         for vm_name, update_prop in reconcile_diff.properties.items()
