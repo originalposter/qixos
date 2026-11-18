@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### DNS in nubes answers at once
+Name lookups in a nube no longer take about five seconds each: systemd-resolved now gets
+the qube's nameservers.
+
 ### Nubes can be network VMs
 A nube with `providesNetwork = true` in the outer config can be other qubes' `netvm`, in
 the place of sys-firewall or a VPN qube, not sys-net. Its inner config needs nothing for

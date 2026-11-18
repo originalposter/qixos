@@ -306,6 +306,11 @@ in
         substituteInPlace "$out/lib/qubes/init/qubes-iptables" \
           --replace-fail '/sbin/$IPTABLES' '${nftables}/bin/$IPTABLES' \
           --replace-fail 'IPTABLES_DATA_DIR=/etc/qubes' "IPTABLES_DATA_DIR=$out/etc/qubes"
+        # setup-ip gives systemd-resolved the qubes nameservers behind
+        # `[ -x /usr/bin/resolvectl ]`. resholve rewrites commands, not paths in such tests,
+        # so the test is pointed at the resolvectl the call after it runs.
+        substituteInPlace "$out/lib/qubes/setup-ip" \
+          --replace-fail '[ -x /usr/bin/resolvectl ]' '[ -x ${systemd}/bin/resolvectl ]'
         # Used with the harden-network-interfaces qubes service on.
         substituteInPlace "$out/etc/xen/scripts/vif-route-qubes" \
           --replace-fail '/usr/lib/systemd/systemd-sysctl' '${systemd}/lib/systemd/systemd-sysctl' \
