@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### Nubes can be network VMs
+A nube with `providesNetwork = true` in the outer config can be other qubes' `netvm`, in
+the place of sys-firewall or a VPN qube, not sys-net. Its inner config needs nothing for
+it. One whose NixOS nftables ruleset flushes everything on load will not forward: set
+`networking.nftables.flushRuleset = false`.
+
+`qixos-rebuild apply` now gives a qube it creates a `netvm` naming another qube at the
+end of the apply rather than when creating it.
+
+`qubes.VMExec` works in nubes, and a standalone nube's `qixos-appvm-switch.service` no
+longer fails on every boot.
+
 ### Nubes play audio
 Every nube with the gui agent now runs PipeWire with the Qubes audio module, so sound goes
 to the audio qube (dom0 or sys-audio) the same way it does from a stock Qubes template.
